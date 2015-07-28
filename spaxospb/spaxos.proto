@@ -1,0 +1,54 @@
+//syntax = "proto2";
+package spaxospb;
+
+// import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+// import "github.com/golang/protobuf/proto";
+
+//option (gogoproto.marshaler_all) = true;
+//option (gogoproto.sizer_all) = true;
+//option (gogoproto.unmarshaler_all) = true;
+//option (gogoproto.goproto_getters_all) = false;
+//option (gogoproto.goproto_enum_prefix_all) = false;
+
+
+
+enum MessageType {
+    MsgHup              = 0;
+    MsgBeat             = 1;
+
+    // # Prop
+    MsgProp             = 2;
+    MsgPropResp         = 3;
+    // # Accpt
+    MsgAccpt            = 4;
+    MsgAccptResp        = 5;
+
+    // # TODO
+}
+
+message PaxosEntry {
+    optional uint64     propNum     = 1; // [(gogoproto.nullable) = false];
+    optional uint64     accptNum    = 2; // [(gogoproto.nullable) = false];
+    optional bytes      value       = 3; // [(gogoproto.nullable) = false];
+}
+
+
+message Message {
+    optional MessageType type       = 1; // [(gogoproto.nullable) = false];
+    optional uint64      to         = 2; // [(gogoproto.nullable) = false];
+    optional uint64      from       = 3; // [(gogoproto.nullable) = false];
+    optional uint64      index      = 4; // [(gogoproto.nullable) = false];
+    optional PaxosEntry  entry      = 5; // [(gogoproto.nullable) = false];
+    optional bool        reject     = 6;
+}
+
+
+message HardState {
+    optional uint64 index = 1;
+    optional uint64 maxProposedNum = 2;
+    optional uint64 maxPromisedNum = 3; // may not needed ?
+    optional uint64 maxAcceptedNum = 4;
+    optional bytes acceptedValue = 5;
+}
+
+
