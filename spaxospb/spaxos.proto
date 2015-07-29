@@ -24,6 +24,9 @@ enum MessageType {
     MsgAccptResp        = 5;
 
     // # TODO
+    // internal msg type : drive
+    MsgTimeOut          = 10;
+    MsgMajorReject      = 11;
 }
 
 message PaxosEntry {
@@ -42,13 +45,18 @@ message Message {
     optional bool        reject     = 6;
 }
 
+enum HardStateType {
+    HardStateProp = 0;
+    HardStateAccpt = 2;
+}
 
 message HardState {
-    optional uint64 index = 1;
-    optional uint64 maxProposedNum = 2;
-    optional uint64 maxPromisedNum = 3; // may not needed ?
-    optional uint64 maxAcceptedNum = 4;
-    optional bytes acceptedValue = 5;
+    optional HardStateType  type            = 1;
+    optional uint64         index           = 2;
+    optional uint64         maxProposedNum  = 3;
+    optional uint64         maxPromisedNum  = 4; // may not needed ?
+    optional uint64         maxAcceptedNum  = 5;
+    optional bytes          acceptedValue   = 6;
 }
 
 

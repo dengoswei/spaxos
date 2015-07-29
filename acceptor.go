@@ -6,19 +6,11 @@ import (
 	pb "spaxos/spaxospb"
 )
 
-type AcceptorStatus int
-type stepAcceptFunc func(msg *pb.Message) (State, error)
-
-const (
-	AcceptorNil          AcceptorStatus = 0
-	AcceptorPromiseNil   AcceptorStatus = 1
-	AcceptorPromiseValue AcceptorStatus = 2
-)
+type stepFunc func(ins *spaxosInstance, msg *pb.Message) (bool, error)
 
 type roleAcceptor struct {
 	//
-	status AcceptorStatus
-	step   stepAcceptFunc
+	step stepFunc
 
 	//
 	promisedCnt    uint32
@@ -28,124 +20,88 @@ type roleAcceptor struct {
 	acceptedValue  []byte
 }
 
-func newAcceptor() *roleAcceptor {
-	return &roleAcceptor{
-		status: AcceptorNil,
-		step:   stepNil,
+func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+	assert(msg.Index == ins.index)
+
+	rsp := &pb.Message{
+		Type: pb.MsgPropResp, Reject: false,
+		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
+	if msg.Entry.PropNum < a.maxPromisedNum {
+		rsp.Reject = true
+		ins.msgs.append(rsp)
+		return true, nil
 	}
+
+	if 0 != a.maxAcceptedNum {
+		rsp.Entry.AccptNum = a.maxAcceptedNum
+		rsp.Entry.Value = a.acceptedValue
+	}
+
+	a.promisedCnt += 1
+	if msg.Entry.PropNum == a.maxPromisedNum {
+		ins.msgs.append(rsp)
+		return true, nil
+	}
+
+	a.maxPromisedNum = msg.Entry.PropNum
+	hs := &pb.HardState{
+		Type:           pb.HardStateAccpt,
+		Index:          ins.index,
+		MaxPromisedNum: a.maxPromisedNum,
+		MaxAcceptedNum: a.maxAcceptedNum,
+		AcceptedValue:  a.acceptedValue}
+
+	ins.hss.append(hs)
+	ins.msgs.append(rsp)
+	return true, nil
 }
 
-func (acceptor *roleAcceptor) stepNil(msg *pb.Message) (State, error) {
-	assert(AcceptorNil == acceptor.status)
-	assert(0 == acceptor.maxPromisedNum)
-	assert(0 == acceptor.maxAcceptedNum)
+func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+	assert(msg.Index == ins.index)
 
-	if pb.MsgProp != msg.Type {
-		return State{}, error.New("spaxos: unexpected msgtype")
+	rsp := &pb.Message{
+		Type: pb.MsgAccptResp, Reject: false,
+		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
+
+	if msg.Entry.PropNum < a.maxPromisedNum {
+		rsp.Reject = true
+		ins.msgs.append(rsp)
+		return true, nil
 	}
 
-	rspMsg := pb.Message{
-		Type:   pb.MsgPropResp,
-		Reject: false,
-		Entry:  pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
-	if 0 == msg.Entry.PropNum {
-		rspMsg.Reject = true
-		return State{msg: &rspMsg}, nil
+	a.acceptedCnt += 1
+	if msg.Entry.PropNum == a.maxAcceptedNum {
+		ins.msgs.append(rsp)
+		return true, nil // do not repeat produce the same hs
 	}
 
-	acceptor.promisedCnt = 1
-	acceptor.maxPromisedNum = msg.Entry.PropNum
-	acceptor.status = AcceptorPromiseNil
-	acceptor.step = stepPromiseNil
-	return State{
-		state: &HardState{
-			maxPromisedNum: acceptor.maxPromisedNum}, msg: &rspMsg}, nil
+	assert(msg.Entry.PropNum > a.maxAcceptedNum)
+	a.maxPromisedNum = msg.Entry.PropNum
+	a.maxAcceptedNum = msg.Entry.PropNum
+	a.acceptedValue = msg.Entry.Value
+
+	hs := &pb.HardState{
+		Type:           pb.HardStateAccpt,
+		Index:          ins.index,
+		MaxPromisedNum: a.maxPromisedNum,
+		MaxAcceptedNum: a.maxAcceptedNum,
+		AcceptedValue:  a.acceptedValue}
+	ins.hss.append(hs)
+	ins.msgs.append(rsp)
+	return true, nil
 }
 
-func (acceptor *roleAcceptor) stepPromiseNil(msg *pb.Message) (State, error) {
-	assert(AcceptorPromiseNil == acceptor.status)
-	assert(nil == acceptor.acceptedValue)
+func (a *roleAcceptor) step(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+	if msg.Index != ins.index {
+		return true, nil // simple ignore
+	}
 
-	state := &pb.HardState{}
-	rspMsg := pb.Message{
-		Reject: false, Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 	switch msg.Type {
 	case pb.MsgProp:
-		rspMsg.Type = pb.MsgPropResp
-		if msg.Entry.PropNum <= acceptor.maxPromisedNum {
-			rspMsg.Reject = true
-			state = nil
-			break
-		}
-
-		acceptor.promisedCnt += 1
-		acceptor.maxPromisedNum = msg.Entry.PropNum
-		state.maxPromisedNum = acceptor.maxPromisedNum
+		return a.stepByMsgProp(ins, msg)
 	case pb.MsgAccpt:
-		rspMsg.Type = pb.MsgAccptResp
-		if msg.Entry.PropNum <= acceptor.maxPromisedNum {
-			rspMsg.Reject = true
-			state = nil
-			break
-		}
-
-		assert(0 == acceptor.acceptedCnt)
-		assert(0 == acceptor.maxAcceptedNum)
-		acceptor.acceptedCnt = 1
-		acceptor.maxPromisedNum = msg.Entry.PropNum
-		acceptor.maxAcceptedNum = acceptor.maxPromisedNum
-		acceptor.acceptedValue = msg.Entry.Value
-
-		acceptor.status = AcceptorPromiseValue
-		acceptor.step = stepPromiseValue
-
-		state.maxPromisedNum = acceptor.maxPromisedNum
-		state.maxAcceptedNum = acceptor.maxAcceptedNum
-		state.acceptedValue = acceptor.acceptedValue
+		return a.stepByMsgAccpt(ins, msg)
 	default:
-		return State{}, error.New("spaxos: unexpected msg type")
+		return false, error.New("acceptor: error msg type")
 	}
-
-	return State{state: state, msg: &rspMsg}, nil
-}
-
-func (acceptor *roleAcceptor) stepPromiseValue(msg *pb.Message) (State, error) {
-	assert(AcceptorPromiseValue == acceptor.status)
-	assert(0 != acceptor.maxPromisedNum)
-	assert(0 != acceptor.maxAcceptedNum)
-
-	if pb.MsgAccpt != msg.Type {
-		return State{}, error.New("spaos: unexpected msg type")
-	}
-
-	rspMsg := pb.Message{
-		Type:   pb.MsgAccptResp,
-		Reject: false,
-		Entry:  pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
-
-	if msg.Entry.PropNum <= acceptor.maxPromisedNum {
-		rspMsg.Reject = true
-		return State{msg: &rspMsg}, nil
-	}
-
-	assert(acceptor.maxPromisedNum >= acceptor.maxAcceptedNum)
-	acceptor.acceptedCnt += 1
-	acceptor.maxPromisedNum = msg.Entry.PropNum
-	acceptor.maxAcceptedNum = acceptor.maxPromisedNum
-	acceptor.acceptedValue = msg.Entry.Value
-
-	// still in AcceptorPromiseValue state
-	return State{
-		state: &pb.HardState{
-			maxPromisedNum: acceptor.maxPromisedNum,
-			maxAcceptedNum: acceptor.maxAcceptedNum,
-			acceptedValue:  acceptor.acceptedValue}}, nil
-}
-
-func (acceptor *roleAcceptor) feed(msg *pb.Message) (State, error) {
-	if nil == acceptor.step {
-		return State{}, error.New("spaxos: feed acceptor no step")
-	}
-
-	return acceptor.step(msg)
 }
