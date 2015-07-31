@@ -21,10 +21,14 @@ type Ready struct {
 
 	// msg wait to be send..
 	Messages []pb.Message
+
+	// spaxos instance need to rebuild
+	RebuildIndex []uint64
 }
 
 func (rd *Ready) containsUpdates() bool {
-	return 0 < len(rd.States) || 0 < len(rd.Chosen) || 0 < len(rd.Messages)
+	return 0 < len(rd.States) || 0 < len(rd.Chosen) ||
+		0 < len(rd.Messages) || 0 < len(rd.RebuildIndex)
 }
 
 type Node interface {
@@ -125,6 +129,8 @@ func (n *node) run(sp *spaxos) {
 
 		case readyc <- rd:
 			// TODO
+			sp.rebuild = nil
+			sp.chosen = nil
 			sp.hss = nil
 			sp.msgs = nil
 			advancec = n.advancec
@@ -135,6 +141,18 @@ func (n *node) run(sp *spaxos) {
 	}
 }
 
+func (n *node) Step(m pb.Message) error {
+	select {
+	case n.recvc <- m:
+		return nil
+	}
+}
+
 func newReady(sp *spaxos) Ready {
-	// TODO
+	rd := Ready{
+		States:       sp.hss,
+		Chosen:       sp.chosen,
+		Messages:     sp.msgs,
+		RebuildIndex: sp.rebuild}
+	return rd
 }

@@ -21,9 +21,13 @@ type roleProposer struct {
 	votes          map[uint64]bool
 }
 
-func (p *roleProposer) propose(ins *spaxosInstance, value []byte) bool {
+func rebuildProposer(hs pb.HardState) *roleProposer {
+	p := &roleProposer{maxProposedNum: hs.MaxProposedNum}
+	return p
+}
+
+func (p *roleProposer) propose(ins *spaxosInstance, value []byte) {
 	p.proposingRound = 0
-	p.maxProposedNum = 0
 	p.maxPromisedNum = 0
 	// default proposing value:
 	p.proposingValue = value
@@ -31,7 +35,6 @@ func (p *roleProposer) propose(ins *spaxosInstance, value []byte) bool {
 	// gen prepare msg & hard state
 	p.beginPrepare(ins)
 	p.step = stepPrepare
-	return true
 }
 
 func (p *roleProposer) beginPrepare(ins *spaxosInstance) {
@@ -46,8 +49,8 @@ func (p *roleProposer) beginPrepare(ins *spaxosInstance) {
 	msg := &pb.Message{Type: pb.MsgProp,
 		Index: ins.index, Entry: pb.PaxosEntry{PropNum: p.maxProposedNum}}
 
-	ins.hss.append(hs)
-	ins.msgs.append(msg)
+	ins.updatePropHardState(maxProposedNum)
+	ins.append(msg)
 }
 
 func (p *roleProposer) beginAccept(ins *spaxosInstance) {
@@ -57,7 +60,7 @@ func (p *roleProposer) beginAccept(ins *spaxosInstance) {
 		Index: ins.index, Entry: pb.PaxosEntry{
 			PropNum: p.maxProposedNum, Value: p.propsingValue}}
 
-	ins.msgs.append(msg)
+	ins.append(msg)
 }
 
 func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, error) {
@@ -94,10 +97,10 @@ func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, 
 		// => p.proprosingValue == msg.Entry.Value
 	}
 
-	if p.trueByMajority(ins) {
+	if ins.trueByMajority(p.votes) {
 		p.beginAccept(ins)
 		p.step = stepAccept
-	} else if proposer.falseByMajority(sp) {
+	} else if ins.falseByMajority(p.votes) {
 		p.beginPrepare(ins)
 		return true, nil
 	}

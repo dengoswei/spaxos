@@ -13,6 +13,8 @@ It is generated from these files:
 It has these top-level messages:
 	PaxosEntry
 	Message
+	HardState
+	ProposeValue
 */
 package spaxospb
 
@@ -34,23 +36,31 @@ const (
 	// # Accpt
 	MessageType_MsgAccpt     MessageType = 4
 	MessageType_MsgAccptResp MessageType = 5
+	// # TODO
+	// internal msg type : drive
+	MessageType_MsgTimeOut     MessageType = 10
+	MessageType_MsgMajorReject MessageType = 11
 )
 
 var MessageType_name = map[int32]string{
-	0: "MsgHup",
-	1: "MsgBeat",
-	2: "MsgProp",
-	3: "MsgPropResp",
-	4: "MsgAccpt",
-	5: "MsgAccptResp",
+	0:  "MsgHup",
+	1:  "MsgBeat",
+	2:  "MsgProp",
+	3:  "MsgPropResp",
+	4:  "MsgAccpt",
+	5:  "MsgAccptResp",
+	10: "MsgTimeOut",
+	11: "MsgMajorReject",
 }
 var MessageType_value = map[string]int32{
-	"MsgHup":       0,
-	"MsgBeat":      1,
-	"MsgProp":      2,
-	"MsgPropResp":  3,
-	"MsgAccpt":     4,
-	"MsgAccptResp": 5,
+	"MsgHup":         0,
+	"MsgBeat":        1,
+	"MsgProp":        2,
+	"MsgPropResp":    3,
+	"MsgAccpt":       4,
+	"MsgAccptResp":   5,
+	"MsgTimeOut":     10,
+	"MsgMajorReject": 11,
 }
 
 func (x MessageType) Enum() *MessageType {
@@ -67,6 +77,39 @@ func (x *MessageType) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*x = MessageType(value)
+	return nil
+}
+
+type HardStateType int32
+
+const (
+	HardStateType_HardStateProp  HardStateType = 0
+	HardStateType_HardStateAccpt HardStateType = 2
+)
+
+var HardStateType_name = map[int32]string{
+	0: "HardStateProp",
+	2: "HardStateAccpt",
+}
+var HardStateType_value = map[string]int32{
+	"HardStateProp":  0,
+	"HardStateAccpt": 2,
+}
+
+func (x HardStateType) Enum() *HardStateType {
+	p := new(HardStateType)
+	*p = x
+	return p
+}
+func (x HardStateType) String() string {
+	return proto.EnumName(HardStateType_name, int32(x))
+}
+func (x *HardStateType) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(HardStateType_value, data, "HardStateType")
+	if err != nil {
+		return err
+	}
+	*x = HardStateType(value)
 	return nil
 }
 
@@ -108,6 +151,7 @@ type Message struct {
 	From             *uint64      `protobuf:"varint,3,opt,name=from" json:"from,omitempty"`
 	Index            *uint64      `protobuf:"varint,4,opt,name=index" json:"index,omitempty"`
 	Entry            *PaxosEntry  `protobuf:"bytes,5,opt,name=entry" json:"entry,omitempty"`
+	Reject           *bool        `protobuf:"varint,6,opt,name=reject" json:"reject,omitempty"`
 	XXX_unrecognized []byte       `json:"-"`
 }
 
@@ -150,6 +194,94 @@ func (m *Message) GetEntry() *PaxosEntry {
 	return nil
 }
 
+func (m *Message) GetReject() bool {
+	if m != nil && m.Reject != nil {
+		return *m.Reject
+	}
+	return false
+}
+
+type HardState struct {
+	Type             *HardStateType `protobuf:"varint,1,opt,name=type,enum=spaxospb.HardStateType" json:"type,omitempty"`
+	Index            *uint64        `protobuf:"varint,2,opt,name=index" json:"index,omitempty"`
+	MaxProposedNum   *uint64        `protobuf:"varint,3,opt,name=maxProposedNum" json:"maxProposedNum,omitempty"`
+	MaxPromisedNum   *uint64        `protobuf:"varint,4,opt,name=maxPromisedNum" json:"maxPromisedNum,omitempty"`
+	MaxAcceptedNum   *uint64        `protobuf:"varint,5,opt,name=maxAcceptedNum" json:"maxAcceptedNum,omitempty"`
+	AcceptedValue    []byte         `protobuf:"bytes,6,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
+	XXX_unrecognized []byte         `json:"-"`
+}
+
+func (m *HardState) Reset()         { *m = HardState{} }
+func (m *HardState) String() string { return proto.CompactTextString(m) }
+func (*HardState) ProtoMessage()    {}
+
+func (m *HardState) GetType() HardStateType {
+	if m != nil && m.Type != nil {
+		return *m.Type
+	}
+	return HardStateType_HardStateProp
+}
+
+func (m *HardState) GetIndex() uint64 {
+	if m != nil && m.Index != nil {
+		return *m.Index
+	}
+	return 0
+}
+
+func (m *HardState) GetMaxProposedNum() uint64 {
+	if m != nil && m.MaxProposedNum != nil {
+		return *m.MaxProposedNum
+	}
+	return 0
+}
+
+func (m *HardState) GetMaxPromisedNum() uint64 {
+	if m != nil && m.MaxPromisedNum != nil {
+		return *m.MaxPromisedNum
+	}
+	return 0
+}
+
+func (m *HardState) GetMaxAcceptedNum() uint64 {
+	if m != nil && m.MaxAcceptedNum != nil {
+		return *m.MaxAcceptedNum
+	}
+	return 0
+}
+
+func (m *HardState) GetAcceptedValue() []byte {
+	if m != nil {
+		return m.AcceptedValue
+	}
+	return nil
+}
+
+type ProposeValue struct {
+	Id               *uint64 `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
+	Value            []byte  `protobuf:"bytes,2,req,name=value" json:"value,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *ProposeValue) Reset()         { *m = ProposeValue{} }
+func (m *ProposeValue) String() string { return proto.CompactTextString(m) }
+func (*ProposeValue) ProtoMessage()    {}
+
+func (m *ProposeValue) GetId() uint64 {
+	if m != nil && m.Id != nil {
+		return *m.Id
+	}
+	return 0
+}
+
+func (m *ProposeValue) GetValue() []byte {
+	if m != nil {
+		return m.Value
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterEnum("spaxospb.MessageType", MessageType_name, MessageType_value)
+	proto.RegisterEnum("spaxospb.HardStateType", HardStateType_name, HardStateType_value)
 }

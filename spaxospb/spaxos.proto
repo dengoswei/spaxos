@@ -27,6 +27,8 @@ enum MessageType {
     // internal msg type : drive
     MsgTimeOut          = 10;
     MsgMajorReject      = 11;
+    MsgCliProp          = 12;
+    MsgInsRebuild       = 13;
 }
 
 message PaxosEntry {
@@ -43,20 +45,23 @@ message Message {
     optional uint64      index      = 4; // [(gogoproto.nullable) = false];
     optional PaxosEntry  entry      = 5; // [(gogoproto.nullable) = false];
     optional bool        reject     = 6;
-}
 
-enum HardStateType {
-    HardStateProp = 0;
-    HardStateAccpt = 2;
+    optional HardState   hs         = 7;
 }
 
 message HardState {
-    optional HardStateType  type            = 1;
-    optional uint64         index           = 2;
-    optional uint64         maxProposedNum  = 3;
-    optional uint64         maxPromisedNum  = 4; // may not needed ?
-    optional uint64         maxAcceptedNum  = 5;
-    optional bytes          acceptedValue   = 6;
+    optional uint64         index           = 1;
+    optional uint64         maxProposedNum  = 2;
+    optional uint64         maxPromisedNum  = 3; 
+    optional uint64         maxAcceptedNum  = 4;
+    optional bytes          acceptedValue   = 5;
 }
+
+
+message ProposeValue {
+    required uint64         id          = 1;
+    required bytes          value       = 2;
+}
+
 
 

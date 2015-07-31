@@ -6,18 +6,21 @@ import (
 	pb "spaxos/spaxospb"
 )
 
-type stepFunc func(ins *spaxosInstance, msg *pb.Message) (bool, error)
-
 type roleAcceptor struct {
-	//
-	step stepFunc
-
 	//
 	promisedCnt    uint32
 	acceptedCnt    uint32
 	maxPromisedNum uint64
 	maxAcceptedNum uint64
 	acceptedValue  []byte
+}
+
+func rebuildAcceptor(hs pb.HardState) *roleAcceptor {
+	a := &roleAcceptor{
+		maxPromisedNum: hs.MaxPromisedNum,
+		maxAcceptedNum: hs.MaxAcceptedNum,
+		acceptedValue:  hs.AcceptedValue}
+	return a
 }
 
 func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool, error) {
@@ -28,7 +31,7 @@ func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 	if msg.Entry.PropNum < a.maxPromisedNum {
 		rsp.Reject = true
-		ins.msgs.append(rsp)
+		ins.append(rsp)
 		return true, nil
 	}
 
@@ -39,20 +42,14 @@ func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool
 
 	a.promisedCnt += 1
 	if msg.Entry.PropNum == a.maxPromisedNum {
-		ins.msgs.append(rsp)
+		ins.append(rsp)
 		return true, nil
 	}
 
 	a.maxPromisedNum = msg.Entry.PropNum
-	hs := &pb.HardState{
-		Type:           pb.HardStateAccpt,
-		Index:          ins.index,
-		MaxPromisedNum: a.maxPromisedNum,
-		MaxAcceptedNum: a.maxAcceptedNum,
-		AcceptedValue:  a.acceptedValue}
 
-	ins.hss.append(hs)
-	ins.msgs.append(rsp)
+	ins.updateAccptHardState(a.maxPromisedNum, a.maxAcceptedNum, a.acceptedValue)
+	ins.append(rsp)
 	return true, nil
 }
 
@@ -65,13 +62,13 @@ func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg *pb.Message) (boo
 
 	if msg.Entry.PropNum < a.maxPromisedNum {
 		rsp.Reject = true
-		ins.msgs.append(rsp)
+		ins.append(rsp)
 		return true, nil
 	}
 
 	a.acceptedCnt += 1
 	if msg.Entry.PropNum == a.maxAcceptedNum {
-		ins.msgs.append(rsp)
+		ins.append(rsp)
 		return true, nil // do not repeat produce the same hs
 	}
 
@@ -80,14 +77,8 @@ func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg *pb.Message) (boo
 	a.maxAcceptedNum = msg.Entry.PropNum
 	a.acceptedValue = msg.Entry.Value
 
-	hs := &pb.HardState{
-		Type:           pb.HardStateAccpt,
-		Index:          ins.index,
-		MaxPromisedNum: a.maxPromisedNum,
-		MaxAcceptedNum: a.maxAcceptedNum,
-		AcceptedValue:  a.acceptedValue}
-	ins.hss.append(hs)
-	ins.msgs.append(rsp)
+	ins.updateAccptHardState(a.maxPromisedNum, a.maxAcceptedNum, a.acceptedValue)
+	ins.append(rsp)
 	return true, nil
 }
 
@@ -101,7 +92,7 @@ func (a *roleAcceptor) step(ins *spaxosInstance, msg *pb.Message) (bool, error) 
 		return a.stepByMsgProp(ins, msg)
 	case pb.MsgAccpt:
 		return a.stepByMsgAccpt(ins, msg)
-	default:
-		return false, error.New("acceptor: error msg type")
 	}
+
+	return false, error.New("acceptor: error msg type")
 }
