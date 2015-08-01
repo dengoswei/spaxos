@@ -40,5 +40,6 @@ func TestRunRecvMsg(t *testing.T) {
 		t.Errorf("recvmsg != msg")
 	}
 
+	fmt.Printf("test my email addrs(contr graph)")
 	fmt.Printf("test success ?")
 }
