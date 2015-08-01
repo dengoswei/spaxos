@@ -2,7 +2,9 @@ package spaxos
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"time"
 
@@ -20,9 +22,15 @@ func handleConnection(conn net.Conn, recvc chan pb.Message) {
 	reader := bufio.NewReader(conn)
 	for {
 		var pkglen int
-		err := binary.Read(reader, binary.BigEndian, &pkglen)
-		if nil != err {
-			return // ERROR CASE
+		{
+			var totalLen uint32
+			err := binary.Read(reader, binary.BigEndian, &totalLen)
+			if nil != err {
+				fmt.Println("binary.Read %s", err)
+				return
+			}
+			pkglen = int(totalLen)
+			assert(0 <= pkglen)
 		}
 
 		var pkg []byte
@@ -39,13 +47,15 @@ func handleConnection(conn net.Conn, recvc chan pb.Message) {
 
 		assert(pkglen == len(pkg))
 		msg := pb.Message{}
-		err = msg.Unmarshal(pkg)
+		err := msg.Unmarshal(pkg)
 		if nil != err {
 			return
 		}
 
 		// feed msg into node
-		recvc <- msg
+		select {
+		case recvc <- msg:
+		}
 	}
 }
 
@@ -66,23 +76,30 @@ type peerInfo struct {
 	recvc chan pb.Message
 }
 
-func sendMsg(writer *bufio.Writer, pkg []byte) error {
-	err := binary.Write(writer, binary.BigEndian, len(pkg))
+func sendMsg(conn net.Conn, pkg []byte) error {
+
+	buf := new(bytes.Buffer)
+	buf.Grow(4)
+	{
+		writelen := uint32(len(pkg))
+		err := binary.Write(buf, binary.BigEndian, writelen)
+		if nil != err {
+			fmt.Println("binary.Write %s", err)
+			return err
+		}
+	}
+
+	writelen, err := conn.Write(append(buf.Bytes(), pkg...))
 	if nil != err {
+		fmt.Println("conn.Write %s", err)
 		return err
 	}
 
-	writelen, err := writer.Write(pkg)
-	if nil != err {
-		return err
-	}
-
-	assert(len(pkg) == writelen)
+	assert(writelen == 4+len(pkg))
 	return nil
 }
 
 func doSendMsg(conn net.Conn, p peerInfo) error {
-	writer := bufio.NewWriter(conn)
 	for {
 		msg := <-p.recvc
 		assert(p.id == msg.To)
@@ -92,7 +109,7 @@ func doSendMsg(conn net.Conn, p peerInfo) error {
 			continue
 		}
 
-		err = sendMsg(writer, pkg)
+		err = sendMsg(conn, pkg)
 		if nil != err {
 			return err
 		}
@@ -119,7 +136,8 @@ func RunSendMsg(addrbook map[uint64]string, sendc chan pb.Message) {
 
 	var pgroup map[uint64]peerInfo
 	for id, addr := range addrbook {
-		p := peerInfo{id: id, addr: addr}
+		p := peerInfo{
+			id: id, addr: addr, recvc: make(chan pb.Message)}
 		pgroup[id] = p
 		go handleSendMsg(p)
 	}

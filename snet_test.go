@@ -1,8 +1,7 @@
 package spaxos
 
 import (
-	"bufio"
-	"fmt"
+	"bytes"
 	"net"
 	"testing"
 
@@ -10,13 +9,13 @@ import (
 )
 
 func TestRunRecvMsg(t *testing.T) {
-	svrAddr := ":5001"
+	svrAddr := ":15001"
 	ln, err := net.Listen("tcp", svrAddr)
 	if nil != err {
 		t.Error(err)
 	}
 
-	var recvc chan pb.Message
+	recvc := make(chan pb.Message)
 	go RunRecvMsg(ln, recvc)
 
 	conn, err := net.Dial("tcp", svrAddr)
@@ -24,22 +23,20 @@ func TestRunRecvMsg(t *testing.T) {
 		t.Error(err)
 	}
 
-	writer := bufio.NewWriter(conn)
 	msg := pb.Message{Type: pb.MsgHup, To: 1, From: 1, Index: 10}
 	pkg, err := msg.Marshal()
 	if nil != err {
 		t.Error(err)
 	}
 
-	err = sendMsg(writer, pkg)
+	err = sendMsg(conn, pkg)
+	assert(nil == err)
 
 	recvmsg := <-recvc
-	if recvmsg.Type != msg.Type ||
-		recvmsg.To != msg.To || recvmsg.From != msg.From ||
-		recvmsg.Index != msg.Index {
-		t.Errorf("recvmsg != msg")
+	{
+		newpkg, err := recvmsg.Marshal()
+		assert(nil == err)
+		ret := bytes.Compare(pkg, newpkg)
+		assert(0 == ret)
 	}
-
-	fmt.Printf("test my email addrs(contr graph)")
-	fmt.Printf("test success ?")
 }
