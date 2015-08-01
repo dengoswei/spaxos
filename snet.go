@@ -5,18 +5,21 @@ import (
 	"encoding/binary"
 	"net"
 	"time"
+
+	pb "spaxos/spaxospb"
 )
 
-// simple network wrapper
-func handleConnection(conn Conn, recvc chan pb.Message) {
-	peerAddr := conn.RemoteAddr()
-	if !n.validPeer(peerAddr) {
-		return // reject invalid peer
+func assert(ok bool) {
+	if !ok {
+		panic("assert failed")
 	}
+}
 
+// simple network wrapper
+func handleConnection(conn net.Conn, recvc chan pb.Message) {
 	reader := bufio.NewReader(conn)
 	for {
-		var pkglen uint64
+		var pkglen int
 		err := binary.Read(reader, binary.BigEndian, &pkglen)
 		if nil != err {
 			return // ERROR CASE
@@ -31,12 +34,12 @@ func handleConnection(conn Conn, recvc chan pb.Message) {
 			}
 
 			assert(0 < readlen)
-			append(pkg, value)
+			pkg = append(pkg, value...)
 		}
 
 		assert(pkglen == len(pkg))
-		msg := &pb.Message{}
-		err = proto.Unmarshal(pkg, msg)
+		msg := pb.Message{}
+		err = msg.Unmarshal(pkg)
 		if nil != err {
 			return
 		}
@@ -46,9 +49,9 @@ func handleConnection(conn Conn, recvc chan pb.Message) {
 	}
 }
 
-func RunRecvMsg(ln Listener, recvc chan pb.Message) {
+func RunRecvMsg(ln net.Listener, recvc chan pb.Message) {
 	for {
-		conn, err := n.ln.Accept()
+		conn, err := ln.Accept()
 		if nil != err {
 			continue
 		}
@@ -63,30 +66,40 @@ type peerInfo struct {
 	recvc chan pb.Message
 }
 
-func doSendMsg(conn Conn, p peerInfo) error {
+func sendMsg(writer *bufio.Writer, pkg []byte) error {
+	err := binary.Write(writer, binary.BigEndian, len(pkg))
+	if nil != err {
+		return err
+	}
+
+	writelen, err := writer.Write(pkg)
+	if nil != err {
+		return err
+	}
+
+	assert(len(pkg) == writelen)
+	return nil
+}
+
+func doSendMsg(conn net.Conn, p peerInfo) error {
+	writer := bufio.NewWriter(conn)
 	for {
 		msg := <-p.recvc
-		assert(p.id == msg.Id)
+		assert(p.id == msg.To)
 
-		pkg, err := proto.Marshal(msg)
+		pkg, err := msg.Marshal()
 		if nil != err {
 			continue
 		}
 
-		err := binary.Write(writer, binary.BigEndian, len(pkg))
+		err = sendMsg(writer, pkg)
 		if nil != err {
 			return err
 		}
-
-		for 0 != len(pkg) {
-			writelen, err := p.conn.Write(pkg)
-			if nil != err {
-				return err
-			}
-
-			pkg = pkg[writelen:]
-		}
 	}
+
+	// should never go there
+	return nil
 }
 
 func handleSendMsg(p peerInfo) {
@@ -111,12 +124,13 @@ func RunSendMsg(addrbook map[uint64]string, sendc chan pb.Message) {
 		go handleSendMsg(p)
 	}
 
+	type pbs []pb.Message
 	var msgMap map[uint64][]pb.Message
 	for {
 		select {
 		case m := <-sendc:
-			append(msgMap[m.Id], m)
-		case <-time.After(1 * time.MilliSecond):
+			msgMap[m.To] = append(msgMap[m.To], m)
+		case <-time.After(1 * time.Millisecond):
 		}
 
 		// loop over pgroup: try to send out msg

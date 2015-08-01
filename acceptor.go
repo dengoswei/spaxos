@@ -1,7 +1,7 @@
 package spaxos
 
 import (
-	"errnors"
+	"errors"
 
 	pb "spaxos/spaxospb"
 )
@@ -23,10 +23,10 @@ func rebuildAcceptor(hs pb.HardState) *roleAcceptor {
 	return a
 }
 
-func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg pb.Message) (bool, error) {
 	assert(msg.Index == ins.index)
 
-	rsp := &pb.Message{
+	rsp := pb.Message{
 		Type: pb.MsgPropResp, Reject: false,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 	if msg.Entry.PropNum < a.maxPromisedNum {
@@ -53,10 +53,10 @@ func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg *pb.Message) (bool
 	return true, nil
 }
 
-func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg pb.Message) (bool, error) {
 	assert(msg.Index == ins.index)
 
-	rsp := &pb.Message{
+	rsp := pb.Message{
 		Type: pb.MsgAccptResp, Reject: false,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 
@@ -82,7 +82,7 @@ func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg *pb.Message) (boo
 	return true, nil
 }
 
-func (a *roleAcceptor) step(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+func (a *roleAcceptor) step(ins *spaxosInstance, msg pb.Message) (bool, error) {
 	if msg.Index != ins.index {
 		return true, nil // simple ignore
 	}
@@ -94,5 +94,5 @@ func (a *roleAcceptor) step(ins *spaxosInstance, msg *pb.Message) (bool, error) 
 		return a.stepByMsgAccpt(ins, msg)
 	}
 
-	return false, error.New("acceptor: error msg type")
+	return false, errors.New("acceptor: error msg type")
 }

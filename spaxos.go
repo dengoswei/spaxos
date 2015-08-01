@@ -9,41 +9,45 @@ import (
 const MaxNodeID uint64 = 1024
 
 type spaxosInstance struct {
+	chosen   bool
 	index    uint64
-	proposer roleProposer
-	acceptor roleAcceptor
+	proposer *roleProposer
+	acceptor *roleAcceptor
 
 	hs pb.HardState
 	// ref
 	sp *spaxos
 }
 
-func (ins *spaxosInstance) append(msg *pb.Message) {
-	ins.sp.msgs.append(msg)
+func (ins *spaxosInstance) append(msg pb.Message) {
+	ins.sp.msgs = append(ins.sp.msgs, msg)
 }
 
 func (ins *spaxosInstance) updatePropHardState(maxPropNum uint64) {
-	hs := &ins.hs
+	hs := ins.hs
 	assert(hs.MaxProposedNum < maxPropNum)
 	hs.MaxProposedNum = maxPropNum
-	ins.sp.hss.append(hs)
+	ins.sp.hss = append(ins.sp.hss, hs)
 }
 
-func (ins *spaxosInstance) updateAccptHardState(maxPromisedNum, maxAcceptedNum, acceptedValue uint64) {
-	hs := &ins.hs
+func (ins *spaxosInstance) updateAccptHardState(
+	maxPromisedNum, maxAcceptedNum uint64, acceptedValue []byte) {
+	hs := ins.hs
 	assert(hs.MaxPromisedNum <= maxPromisedNum)
 	assert(hs.MaxAcceptedNum <= maxAcceptedNum)
 	hs.MaxPromisedNum = maxPromisedNum
 	hs.MaxAcceptedNum = maxAcceptedNum
 	hs.AcceptedValue = acceptedValue
-	ins.sp.hss.append(hs)
+
+	sp := ins.sp
+	sp.hss = append(sp.hss, hs)
 }
 
 func (ins *spaxosInstance) trueByMajority(votes map[uint64]bool) bool {
-	total := len(sp.groups)
+	total := len(ins.sp.groups)
 
 	trueCnt := 0
-	for idx, b := range votes {
+	for _, b := range votes {
 		if b {
 			trueCnt += 1
 		}
@@ -53,10 +57,10 @@ func (ins *spaxosInstance) trueByMajority(votes map[uint64]bool) bool {
 }
 
 func (ins *spaxosInstance) falseByMajority(votes map[uint64]bool) bool {
-	total := len(sp.groups)
+	total := len(ins.sp.groups)
 
 	falseCnt := 0
-	for idx, b := range votes {
+	for _, b := range votes {
 		if !b {
 			falseCnt += 1
 		}
@@ -67,15 +71,15 @@ func (ins *spaxosInstance) falseByMajority(votes map[uint64]bool) bool {
 
 func (ins *spaxosInstance) nextProposeNum(propNum uint64) uint64 {
 	if 0 == propNum {
-		return sp.id
+		return ins.sp.id
 	}
 
 	return propNum + MaxNodeID
 }
 
-func (ins *spaxosInstance) step(msg *pb.Message) (bool, error) {
+func (ins *spaxosInstance) step(msg pb.Message) (bool, error) {
 	if msg.Index != ins.index {
-		return false, error.New("spaxos: mismatch index")
+		return false, errors.New("spaxos: mismatch index")
 	}
 
 	switch msg.Type {
@@ -108,9 +112,11 @@ type spaxos struct {
 
 	// index -> ins: need re-build
 	rebuild []uint64 // rebuild index
-	chosen  map[uint64][]byte
+	chosen  map[uint64]pb.ProposeValue
 	hss     []pb.HardState
 	msgs    []pb.Message
+
+	prevHSS []pb.HardState
 }
 
 func (sp *spaxos) newSpaxosInstance() *spaxosInstance {
@@ -135,13 +141,14 @@ func (sp *spaxos) rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 	return ins
 }
 
-func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
+func (sp *spaxos) getSpaxosInstance(msg pb.Message) *spaxosInstance {
+	index := msg.Index
 	ins, ok := sp.allSps[index]
 	if !ok {
 		if index < sp.minIndex {
-			append(fifoIndex, index)
-			append(sp.handOn[index], msg)
-			append(sp.rebuild, index)
+			sp.fifoIndex = append(sp.fifoIndex, index)
+			sp.handOn[index] = append(sp.handOn[index], msg)
+			sp.rebuild = append(sp.rebuild, index)
 			return nil
 		}
 
@@ -169,11 +176,11 @@ func (sp *spaxos) needRebuild(index uint64) bool {
 
 func (sp *spaxos) Step(msg pb.Message) {
 	switch msg.Type {
-	case pb.MsgCliPrpo:
+	case pb.MsgCliProp:
 		var ins *spaxosInstance
 		if 0 != msg.Index {
 			// reprop at exist index
-			ins = getSpaxosInstance(msg.Index)
+			ins = sp.getSpaxosInstance(msg)
 			if nil == ins {
 				return
 			}
@@ -190,7 +197,7 @@ func (sp *spaxos) Step(msg pb.Message) {
 			return // no need rebuld
 		}
 
-		newins := sp.rebuildSpaxosInstance(msg.hs)
+		newins := sp.rebuildSpaxosInstance(msg.Hs)
 		sp.allSps[msg.Index] = newins
 
 		msgs := sp.handOn[msg.Index]
@@ -204,7 +211,7 @@ func (sp *spaxos) Step(msg pb.Message) {
 	}
 
 	// else =>
-	ins := getSpaxosInstance(msg.Index)
+	ins := sp.getSpaxosInstance(msg)
 	if nil == ins {
 		// handOn: wait for ins rebuild
 		return
@@ -218,6 +225,14 @@ func (sp *spaxos) validNode(nodeID uint64) bool {
 		return false
 	}
 
-	val, ok := sp.groups[nodeID]
+	_, ok := sp.groups[nodeID]
 	return ok
+}
+
+func max(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+
+	return b
 }

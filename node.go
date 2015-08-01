@@ -3,7 +3,6 @@ package spaxos
 import (
 	"errors"
 
-	proto "github.com/golang/protobuf/proto"
 	pb "spaxos/spaxospb"
 )
 
@@ -16,11 +15,11 @@ type Ready struct {
 	// chosen value
 	States []pb.HardState
 
-	// entry to be safe to storage before message send
-	Chosen map[uint64]pb.PropValue
-
 	// msg wait to be send..
 	Messages []pb.Message
+
+	// entry to be safe to storage before message send
+	Chosen map[uint64]pb.ProposeValue
 
 	// spaxos instance need to rebuild
 	RebuildIndex []uint64
@@ -38,10 +37,10 @@ type Node interface {
 }
 
 type node struct {
-	propc    chan []byte
+	propc    chan pb.Message
 	recvc    chan pb.Message
 	readyc   chan Ready
-	advancec chan struct{}
+	advancec chan bool
 	tickc    chan struct{}
 	done     chan struct{}
 	stop     chan struct{}
@@ -51,50 +50,24 @@ type node struct {
 func (n *node) Propose(uniqID uint64, data []byte) error {
 	// try to propose
 
-	value, err := proto.Marshal(pb.PropValue{Id: uniqID, Value: data})
+	pv := pb.ProposeValue{Id: uniqID, Value: data}
+	value, err := pv.Marshal()
 	if nil != err {
 		return err
 	}
 
-	msg := pb.Message{Type: pb.MsgCliProp, PaxosEntry{Value: value}}
+	msg := pb.Message{
+		Type: pb.MsgCliProp, Entry: pb.PaxosEntry{Value: value}}
 	select {
 	case n.propc <- msg:
 		return nil
 	}
 }
 
-func (n *node) runPaxosInstance(sp *spaxos, data []byte) error {
-	assert(nil != sp.currentEntry)
-
-	index := sp.currentEntry.index
-	p := sp.currentEntry.proposer
-	a := sp.currentEntry.acceptor
-	assert(0 < index)
-	assert(nil != p)
-	assert(nil != a)
-
-	ecode := p.propose(data)
-	if nil != ecode {
-		return ecode
-	}
-
-	for {
-		// 1. get
-		state, msg, ecode := p.getMessages()
-		if nil != ecode {
-			return ecode
-		}
-
-		// safe state.
-		select {}
-
-	}
-}
-
 func (n *node) run(sp *spaxos) {
 	var propc chan pb.Message
 	var readyc chan Ready
-	var advancec chan struct{}
+	var advancec chan bool
 	var rd Ready
 
 	for {
@@ -122,20 +95,30 @@ func (n *node) run(sp *spaxos) {
 			sp.Step(msg)
 
 		case msg := <-n.recvc:
-			if _, ok := sp.groups[msg.from]; ok {
+			if _, ok := sp.groups[msg.From]; ok {
 				// msg from trust source
 				sp.Step(msg)
 			}
 
 		case readyc <- rd:
 			// TODO
+			assert(nil == sp.prevHSS)
 			sp.rebuild = nil
 			sp.chosen = nil
+			sp.prevHSS = sp.hss
 			sp.hss = nil
 			sp.msgs = nil
 			advancec = n.advancec
-		case <-advancec:
-			// TODO
+		case ok := <-advancec:
+			if !ok {
+				// failed to save hss
+				// => reload prevHSS into sp.hss
+				sp.hss = append(sp.prevHSS, sp.hss...)
+				sp.prevHSS = nil
+			} else {
+				sp.prevHSS = nil
+			}
+
 			advancec = nil
 		}
 	}

@@ -1,14 +1,13 @@
-//syntax = "proto2";
+syntax = "proto2";
 package spaxospb;
 
-// import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-// import "github.com/golang/protobuf/proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
-//option (gogoproto.marshaler_all) = true;
-//option (gogoproto.sizer_all) = true;
-//option (gogoproto.unmarshaler_all) = true;
-//option (gogoproto.goproto_getters_all) = false;
-//option (gogoproto.goproto_enum_prefix_all) = false;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.goproto_enum_prefix_all) = false;
 
 
 
@@ -32,35 +31,35 @@ enum MessageType {
 }
 
 message PaxosEntry {
-    optional uint64     propNum     = 1; // [(gogoproto.nullable) = false];
-    optional uint64     accptNum    = 2; // [(gogoproto.nullable) = false];
-    optional bytes      value       = 3; // [(gogoproto.nullable) = false];
+    optional uint64     propNum     = 1 [(gogoproto.nullable) = false];
+    optional uint64     accptNum    = 2 [(gogoproto.nullable) = false];
+    optional bytes      value       = 3;
 }
 
 
 message Message {
-    optional MessageType type       = 1; // [(gogoproto.nullable) = false];
-    optional uint64      to         = 2; // [(gogoproto.nullable) = false];
-    optional uint64      from       = 3; // [(gogoproto.nullable) = false];
-    optional uint64      index      = 4; // [(gogoproto.nullable) = false];
-    optional PaxosEntry  entry      = 5; // [(gogoproto.nullable) = false];
-    optional bool        reject     = 6;
+    optional MessageType type       = 1 [(gogoproto.nullable) = false];
+    optional uint64      to         = 2 [(gogoproto.nullable) = false];
+    optional uint64      from       = 3 [(gogoproto.nullable) = false];
+    optional uint64      index      = 4 [(gogoproto.nullable) = false];
+    optional PaxosEntry  entry      = 5 [(gogoproto.nullable) = false];
+    optional bool        reject     = 6 [(gogoproto.nullable) = false];
 
-    optional HardState   hs         = 7;
+    optional HardState   hs         = 7 [(gogoproto.nullable) = false];
 }
 
 message HardState {
-    optional uint64         index           = 1;
-    optional uint64         maxProposedNum  = 2;
-    optional uint64         maxPromisedNum  = 3; 
-    optional uint64         maxAcceptedNum  = 4;
-    optional bytes          acceptedValue   = 5;
+    optional uint64  index           = 1 [(gogoproto.nullable) = false];
+    optional uint64  maxProposedNum  = 2 [(gogoproto.nullable) = false];
+    optional uint64  maxPromisedNum  = 3 [(gogoproto.nullable) = false];
+    optional uint64  maxAcceptedNum  = 4 [(gogoproto.nullable) = false];
+    optional bytes   acceptedValue   = 5;
 }
 
 
 message ProposeValue {
-    required uint64         id          = 1;
-    required bytes          value       = 2;
+    required uint64         id       = 1 [(gogoproto.nullable) = false];
+    required bytes          value    = 2;
 }
 
 

@@ -6,8 +6,6 @@ import (
 	pb "spaxos/spaxospb"
 )
 
-type stepFunc func(ins *spaxosInstance, msg *pb.Message) (bool, error)
-
 type roleProposer struct {
 	// wait
 	// => { prepare -> accpet} loop
@@ -34,7 +32,7 @@ func (p *roleProposer) propose(ins *spaxosInstance, value []byte) {
 
 	// gen prepare msg & hard state
 	p.beginPrepare(ins)
-	p.step = stepPrepare
+	p.step = p.stepPrepare
 }
 
 func (p *roleProposer) beginPrepare(ins *spaxosInstance) {
@@ -43,27 +41,32 @@ func (p *roleProposer) beginPrepare(ins *spaxosInstance) {
 	p.votes = make(map[uint64]bool)
 
 	// index
-	hs := &pb.HardState{Type: pb.HardStateProp,
-		Index: ins.index, MaxProposedNum: p.maxProposedNum}
-
-	msg := &pb.Message{Type: pb.MsgProp,
+	msg := pb.Message{Type: pb.MsgProp,
 		Index: ins.index, Entry: pb.PaxosEntry{PropNum: p.maxProposedNum}}
 
-	ins.updatePropHardState(maxProposedNum)
+	ins.updatePropHardState(p.maxProposedNum)
 	ins.append(msg)
 }
 
 func (p *roleProposer) beginAccept(ins *spaxosInstance) {
 	p.votes = make(map[uint64]bool)
 
-	msg := &pb.Message{Type: pb.MsgAccpt,
+	msg := pb.Message{Type: pb.MsgAccpt,
 		Index: ins.index, Entry: pb.PaxosEntry{
-			PropNum: p.maxProposedNum, Value: p.propsingValue}}
+			PropNum: p.maxProposedNum, Value: p.proposingValue}}
 
 	ins.append(msg)
 }
 
-func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+type stepFunc func(ins *spaxosInstance, msg pb.Message) (bool, error)
+
+func (p *roleProposer) stepChosen(
+	sp *spaxosInstance, msg pb.Message) (bool, error) {
+	return true, nil
+}
+
+func (p *roleProposer) stepPrepare(
+	ins *spaxosInstance, msg pb.Message) (bool, error) {
 	// MsgPropResp or MsgMajorReject
 	if msg.Index != ins.index || p.maxProposedNum != msg.Entry.PropNum {
 		return true, nil // do nothing: error PropNum
@@ -78,16 +81,16 @@ func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, 
 		p.beginPrepare(ins)
 		return true, nil
 	default:
-		return false, error.New("proposer: error msg type")
+		return false, errors.New("proposer: error msg type")
 	}
 
-	if val, ok := p.votes[msg.from]; ok {
+	if val, ok := p.votes[msg.From]; ok {
 		// msg.from already vote
 		assert(val == !msg.Reject)
 		return true, nil
 	}
 
-	p.votes[msg.from] = !msg.Reject
+	p.votes[msg.From] = !msg.Reject
 	if false == msg.Reject {
 		if p.maxPromisedNum < msg.Entry.AccptNum {
 			p.proposingValue = msg.Entry.Value
@@ -99,7 +102,7 @@ func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, 
 
 	if ins.trueByMajority(p.votes) {
 		p.beginAccept(ins)
-		p.step = stepAccept
+		p.step = p.stepAccept
 	} else if ins.falseByMajority(p.votes) {
 		p.beginPrepare(ins)
 		return true, nil
@@ -108,7 +111,8 @@ func (p *roleProposer) stepPrepare(ins *spaxosInstance, msg *pb.Message) (bool, 
 	return true, nil
 }
 
-func (p *roleProposer) stepAccept(ins *spaxosInstance, msg *pb.Message) (bool, error) {
+func (p *roleProposer) stepAccept(
+	ins *spaxosInstance, msg pb.Message) (bool, error) {
 	if msg.Index != ins.index || p.maxProposedNum != msg.Entry.PropNum {
 		return true, nil
 	}
@@ -122,24 +126,24 @@ func (p *roleProposer) stepAccept(ins *spaxosInstance, msg *pb.Message) (bool, e
 		p.beginAccept(ins)
 		return true, nil
 	default:
-		return false, error.New("proposer: error msg type")
+		return false, errors.New("proposer: error msg type")
 	}
 
-	if val, ok := p.votes[msg.from]; ok {
+	if val, ok := p.votes[msg.From]; ok {
 		assert(val == !msg.Reject)
 		return true, nil
 	}
 
-	p.votes[msg.from] = !msg.Reject
+	p.votes[msg.From] = !msg.Reject
 	if ins.trueByMajority(p.votes) {
 		// accpeted by majority
-		p.step = stepChosen
+		p.step = p.stepChosen
 		ins.chosen = true
 		return true, nil
 	} else if ins.falseByMajority(p.votes) {
 		// reject by majority
 		p.beginPrepare(ins)
-		p.step = stepPrepare
+		p.step = p.stepPrepare
 		return true, nil
 	}
 
