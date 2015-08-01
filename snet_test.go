@@ -40,5 +40,5 @@ func TestRunRecvMsg(t *testing.T) {
 		t.Errorf("recvmsg != msg")
 	}
 
-	fmt.Printf("success")
+	fmt.Printf("test success ?")
 }
