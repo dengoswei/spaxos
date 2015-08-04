@@ -2,6 +2,7 @@ package spaxos
 
 import (
 	"errors"
+	//"log"
 
 	pb "spaxos/spaxospb"
 )
@@ -28,6 +29,7 @@ func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg pb.Message) (bool,
 
 	rsp := pb.Message{
 		Type: pb.MsgPropResp, Reject: false,
+		Index: msg.Index, From: msg.To, To: msg.From,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 	if msg.Entry.PropNum < a.maxPromisedNum {
 		rsp.Reject = true
@@ -54,10 +56,12 @@ func (a *roleAcceptor) stepByMsgProp(ins *spaxosInstance, msg pb.Message) (bool,
 }
 
 func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg pb.Message) (bool, error) {
+	assert(nil != ins)
 	assert(msg.Index == ins.index)
 
 	rsp := pb.Message{
 		Type: pb.MsgAccptResp, Reject: false,
+		Index: msg.Index, From: msg.To, To: msg.From,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 
 	if msg.Entry.PropNum < a.maxPromisedNum {
@@ -82,7 +86,8 @@ func (a *roleAcceptor) stepByMsgAccpt(ins *spaxosInstance, msg pb.Message) (bool
 	return true, nil
 }
 
-func (a *roleAcceptor) step(ins *spaxosInstance, msg pb.Message) (bool, error) {
+func (a *roleAcceptor) step(
+	ins *spaxosInstance, msg pb.Message) (bool, error) {
 	if msg.Index != ins.index {
 		return true, nil // simple ignore
 	}

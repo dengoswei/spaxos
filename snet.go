@@ -17,8 +17,29 @@ func assert(ok bool) {
 	}
 }
 
+type SNet struct {
+	selfid uint64
+	recvc  chan pb.Message
+	sendc  chan []pb.Message
+
+	// all peers
+	groupsid []uint64
+	peers    []string
+}
+
+func newSNet(selfid uint64, groupsid []uint64, peers []string) *SNet {
+	s := &SNet{
+		selfid:   selfid,
+		groupsid: groupsid,
+		peers:    peers,
+		recvc:    make(chan pb.Message, 10),
+		sendc:    make(chan []pb.Message)}
+	return s
+}
+
 // simple network wrapper
-func handleConnection(conn net.Conn, recvc chan pb.Message) {
+func handleConnection(
+	conn net.Conn, recvc chan pb.Message, groupsid map[uint64]bool) {
 	reader := bufio.NewReader(conn)
 	for {
 		var pkglen int
@@ -52,6 +73,11 @@ func handleConnection(conn net.Conn, recvc chan pb.Message) {
 			return
 		}
 
+		if _, ok := groupsid[msg.From]; !ok {
+			// invalid msg.From
+			continue
+		}
+
 		// feed msg into node
 		select {
 		case recvc <- msg:
@@ -59,15 +85,41 @@ func handleConnection(conn net.Conn, recvc chan pb.Message) {
 	}
 }
 
-func RunRecvMsg(ln net.Listener, recvc chan pb.Message) {
+func (s *SNet) RunRecvMsgImpl(ln net.Listener) {
+
+	groupsid := make(map[uint64]bool)
+	for _, id := range s.groupsid {
+		groupsid[id] = true
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if nil != err {
 			continue
 		}
 
-		go handleConnection(conn, recvc)
+		go handleConnection(conn, s.recvc, groupsid)
 	}
+}
+
+func (s *SNet) RunRecvMsg() error {
+	var lsnAddr string
+	assert(len(s.groupsid) == len(s.peers))
+	for i := 0; i < len(s.peers); i += 1 {
+		if s.selfid == s.groupsid[i] {
+			lsnAddr = s.peers[i]
+		}
+	}
+
+	assert("" != lsnAddr)
+	ln, err := net.Listen("tcp", lsnAddr)
+	if nil != err {
+		return err
+	}
+	assert(nil != ln)
+
+	go s.RunRecvMsgImpl(ln)
+	return nil
 }
 
 type peerInfo struct {
@@ -128,39 +180,46 @@ func handleSendMsg(p peerInfo) {
 			continue
 		}
 
+		println("handleSendMsg Dial succ")
 		doSendMsg(conn, p)
 	}
 }
 
-func RunSendMsg(addrbook map[uint64]string, sendc chan pb.Message) {
+func (s *SNet) RunSendMsg() {
+	pgroup := make(map[uint64]peerInfo)
+	assert(len(s.groupsid) == len(s.peers))
 
-	var pgroup map[uint64]peerInfo
-	for id, addr := range addrbook {
+	for i := 0; i < len(s.groupsid); i += 1 {
+		id := s.groupsid[i]
 		p := peerInfo{
-			id: id, addr: addr, recvc: make(chan pb.Message)}
+			id: id, addr: s.peers[i], recvc: make(chan pb.Message)}
 		pgroup[id] = p
 		go handleSendMsg(p)
 	}
 
-	type pbs []pb.Message
-	var msgMap map[uint64][]pb.Message
+	msgQueue := make(map[uint64][]pb.Message)
 	for {
 		select {
-		case m := <-sendc:
-			msgMap[m.To] = append(msgMap[m.To], m)
-		case <-time.After(1 * time.Millisecond):
+		case msgs := <-s.sendc:
+			for _, msg := range msgs {
+				msgQueue[msg.To] = append(msgQueue[msg.To], msg)
+			}
+		case <-time.After(1000 * time.Microsecond):
 		}
 
-		// loop over pgroup: try to send out msg
-		for id, p := range pgroup {
-			if msgs, ok := msgMap[id]; ok {
-				if 0 < len(msgs) {
-					msg := msgs[0]
-					select {
-					case p.recvc <- msg:
-						msgMap[id] = msgs[1:]
-					default:
-					}
+		allBlock := false
+		for !allBlock {
+			allBlock = true
+			for id, msgs := range msgQueue {
+				if 0 == len(msgs) {
+					continue
+				}
+
+				select {
+				case pgroup[id].recvc <- msgs[0]:
+					msgQueue[id] = msgQueue[id][1:]
+					allBlock = false
+				default:
 				}
 			}
 		}

@@ -9,16 +9,14 @@ import (
 )
 
 func TestRunRecvMsg(t *testing.T) {
-	svrAddr := ":15001"
-	ln, err := net.Listen("tcp", svrAddr)
-	if nil != err {
-		t.Error(err)
-	}
+	groupsid := []uint64{1}
+	peers := []string{":16001"}
+	s := newSNet(1, groupsid, peers)
 
-	recvc := make(chan pb.Message)
-	go RunRecvMsg(ln, recvc)
+	err := s.RunRecvMsg()
+	assert(nil == err)
 
-	conn, err := net.Dial("tcp", svrAddr)
+	conn, err := net.Dial("tcp", peers[0])
 	if nil != err {
 		t.Error(err)
 	}
@@ -32,7 +30,7 @@ func TestRunRecvMsg(t *testing.T) {
 	err = sendMsg(conn, pkg)
 	assert(nil == err)
 
-	recvmsg := <-recvc
+	recvmsg := <-s.recvc
 	{
 		newpkg, err := recvmsg.Marshal()
 		assert(nil == err)

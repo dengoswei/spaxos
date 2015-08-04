@@ -2,6 +2,7 @@ package spaxos
 
 import (
 	"errors"
+	"log"
 
 	pb "spaxos/spaxospb"
 )
@@ -19,7 +20,7 @@ type Ready struct {
 	Messages []pb.Message
 
 	// entry to be safe to storage before message send
-	Chosen map[uint64]pb.ProposeValue
+	Chosen map[uint64][]byte
 
 	// spaxos instance need to rebuild
 	RebuildIndex []uint64
@@ -46,18 +47,23 @@ type node struct {
 	stop     chan struct{}
 }
 
+func newNode() node {
+	return node{
+		propc:    make(chan pb.Message),
+		recvc:    make(chan pb.Message),
+		readyc:   make(chan Ready),
+		advancec: make(chan bool),
+		tickc:    make(chan struct{}),
+		done:     make(chan struct{}),
+		stop:     make(chan struct{})}
+}
+
 // stall util propose commit or timeout ?
-func (n *node) Propose(uniqID uint64, data []byte) error {
+func (n *node) Propose(value []byte) error {
 	// try to propose
-
-	pv := pb.ProposeValue{Id: uniqID, Value: data}
-	value, err := pv.Marshal()
-	if nil != err {
-		return err
-	}
-
 	msg := pb.Message{
-		Type: pb.MsgCliProp, Entry: pb.PaxosEntry{Value: value}}
+		Type:  pb.MsgCliProp,
+		Entry: pb.PaxosEntry{Value: value}}
 	select {
 	case n.propc <- msg:
 		return nil
@@ -92,9 +98,12 @@ func (n *node) run(sp *spaxos) {
 		select {
 		case msg := <-propc:
 			msg.From = sp.id
+			msg.To = sp.id
 			sp.Step(msg)
+			printMsg("prop:", msg)
 
 		case msg := <-n.recvc:
+			printMsg("recv:", msg)
 			if _, ok := sp.groups[msg.From]; ok {
 				// msg from trust source
 				sp.Step(msg)
@@ -102,23 +111,19 @@ func (n *node) run(sp *spaxos) {
 
 		case readyc <- rd:
 			// TODO
-			assert(nil == sp.prevHSS)
-			sp.rebuild = nil
-			sp.chosen = nil
-			sp.prevHSS = sp.hss
-			sp.hss = nil
-			sp.msgs = nil
+			assert(nil == sp.prevState)
+			assert(nil != sp.currState)
+			sp.prevState = sp.currState
+			sp.currState = newSpaxosState()
 			advancec = n.advancec
 		case ok := <-advancec:
 			if !ok {
 				// failed to save hss
 				// => reload prevHSS into sp.hss
-				sp.hss = append(sp.prevHSS, sp.hss...)
-				sp.prevHSS = nil
-			} else {
-				sp.prevHSS = nil
+				sp.currState.combine(sp.prevState)
 			}
 
+			sp.prevState = nil
 			advancec = nil
 		}
 	}
@@ -132,10 +137,22 @@ func (n *node) Step(m pb.Message) error {
 }
 
 func newReady(sp *spaxos) Ready {
+	assert(nil != sp.currState)
 	rd := Ready{
-		States:       sp.hss,
-		Chosen:       sp.chosen,
-		Messages:     sp.msgs,
-		RebuildIndex: sp.rebuild}
+		States:       sp.currState.hss,
+		Chosen:       sp.currState.chosen,
+		Messages:     sp.currState.msgs,
+		RebuildIndex: sp.currState.rebuild}
 	return rd
+}
+
+func (n *node) Advance(ret bool) {
+	select {
+	case n.advancec <- ret:
+	}
+}
+
+func printMsg(hint string, msg pb.Message) {
+	log.Printf("%s msg: To %d From %d Type %s Index %d",
+		hint, msg.To, msg.From, pb.MessageType_name[int32(msg.Type)], msg.Index)
 }

@@ -29,6 +29,7 @@ func (p *roleProposer) propose(ins *spaxosInstance, value []byte) {
 	p.maxPromisedNum = 0
 	// default proposing value:
 	p.proposingValue = value
+	p.votes = make(map[uint64]bool)
 
 	// gen prepare msg & hard state
 	p.beginPrepare(ins)
@@ -138,7 +139,7 @@ func (p *roleProposer) stepAccept(
 	if ins.trueByMajority(p.votes) {
 		// accpeted by majority
 		p.step = p.stepChosen
-		ins.chosen = true
+		ins.reportChosen(p.proposingValue)
 		return true, nil
 	} else if ins.falseByMajority(p.votes) {
 		// reject by majority

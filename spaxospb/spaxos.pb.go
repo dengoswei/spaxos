@@ -46,6 +46,7 @@ const (
 	MsgMajorReject MessageType = 11
 	MsgCliProp     MessageType = 12
 	MsgInsRebuild  MessageType = 13
+	MsgChosen      MessageType = 14
 )
 
 var MessageType_name = map[int32]string{
@@ -59,6 +60,7 @@ var MessageType_name = map[int32]string{
 	11: "MsgMajorReject",
 	12: "MsgCliProp",
 	13: "MsgInsRebuild",
+	14: "MsgChosen",
 }
 var MessageType_value = map[string]int32{
 	"MsgHup":         0,
@@ -71,6 +73,7 @@ var MessageType_value = map[string]int32{
 	"MsgMajorReject": 11,
 	"MsgCliProp":     12,
 	"MsgInsRebuild":  13,
+	"MsgChosen":      14,
 }
 
 func (x MessageType) Enum() *MessageType {

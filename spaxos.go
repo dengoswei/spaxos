@@ -2,6 +2,7 @@ package spaxos
 
 import (
 	"errors"
+	"log"
 
 	pb "spaxos/spaxospb"
 )
@@ -9,7 +10,6 @@ import (
 const MaxNodeID uint64 = 1024
 
 type spaxosInstance struct {
-	chosen   bool
 	index    uint64
 	proposer *roleProposer
 	acceptor *roleAcceptor
@@ -19,15 +19,19 @@ type spaxosInstance struct {
 	sp *spaxos
 }
 
+func (ins *spaxosInstance) reportChosen(value []byte) {
+	ins.sp.reportChosen(ins.index, value)
+}
+
 func (ins *spaxosInstance) append(msg pb.Message) {
-	ins.sp.msgs = append(ins.sp.msgs, msg)
+	ins.sp.appendMsg(msg)
 }
 
 func (ins *spaxosInstance) updatePropHardState(maxPropNum uint64) {
 	hs := ins.hs
 	assert(hs.MaxProposedNum < maxPropNum)
 	hs.MaxProposedNum = maxPropNum
-	ins.sp.hss = append(ins.sp.hss, hs)
+	ins.sp.appendHSS(hs)
 }
 
 func (ins *spaxosInstance) updateAccptHardState(
@@ -39,8 +43,7 @@ func (ins *spaxosInstance) updateAccptHardState(
 	hs.MaxAcceptedNum = maxAcceptedNum
 	hs.AcceptedValue = acceptedValue
 
-	sp := ins.sp
-	sp.hss = append(sp.hss, hs)
+	ins.sp.appendHSS(hs)
 }
 
 func (ins *spaxosInstance) trueByMajority(votes map[uint64]bool) bool {
@@ -82,6 +85,7 @@ func (ins *spaxosInstance) step(msg pb.Message) (bool, error) {
 		return false, errors.New("spaxos: mismatch index")
 	}
 
+	printMsg("spaxosInstance step", msg)
 	switch msg.Type {
 	case pb.MsgProp:
 		fallthrough
@@ -90,6 +94,30 @@ func (ins *spaxosInstance) step(msg pb.Message) (bool, error) {
 	}
 
 	return ins.proposer.step(ins, msg)
+}
+
+type spaxosState struct {
+	// index -> ins: need re-build
+	rebuild []uint64 // rebuild index
+	chosen  map[uint64][]byte
+	hss     []pb.HardState
+	msgs    []pb.Message
+
+	prevHSS []pb.HardState
+}
+
+func newSpaxosState() *spaxosState {
+	return &spaxosState{chosen: make(map[uint64][]byte)}
+}
+
+func (ss *spaxosState) combine(ssb *spaxosState) {
+	ss.rebuild = append(ss.rebuild, ssb.rebuild...)
+	ss.hss = append(ss.hss, ssb.hss...)
+	ss.msgs = append(ss.msgs, ssb.msgs...)
+	ss.prevHSS = append(ss.prevHSS, ssb.prevHSS...)
+	for index, value := range ssb.chosen {
+		ss.chosen[index] = value
+	}
 }
 
 type spaxos struct {
@@ -110,19 +138,73 @@ type spaxos struct {
 	// msg handOn: wait for ins re-build;
 	handOn map[uint64][]pb.Message
 
-	// index -> ins: need re-build
-	rebuild []uint64 // rebuild index
-	chosen  map[uint64]pb.ProposeValue
-	hss     []pb.HardState
-	msgs    []pb.Message
+	prevState *spaxosState
+	currState *spaxosState
+	//	// index -> ins: need re-build
+	//	rebuild []uint64 // rebuild index
+	//	chosen  map[uint64][]byte
+	//	hss     []pb.HardState
+	//	msgs    []pb.Message
+	//
+	//	prevHSS []pb.HardState
+}
 
-	prevHSS []pb.HardState
+func (sp *spaxos) reportChosen(index uint64, value []byte) {
+	chosen := sp.currState.chosen
+	if _, ok := chosen[index]; ok {
+		log.Panic("reportChosen", index, "multiple-times!")
+	}
+
+	chosen[index] = value
+	if _, ok := sp.mySps[index]; ok {
+		delete(sp.mySps, index)
+	}
+}
+
+func (sp *spaxos) appendMsg(msg pb.Message) {
+	if 0 == msg.From {
+		msg.From = sp.id
+	}
+	assert(msg.From == sp.id)
+	sp.currState.msgs = append(sp.currState.msgs, msg)
+}
+
+func (sp *spaxos) appendHSS(hs pb.HardState) {
+	sp.currState.hss = append(sp.currState.hss, hs)
+}
+
+func newSpaxos(
+	selfid uint64, groupsid []uint64, minIndex, maxIndex uint64) *spaxos {
+	groups := make(map[uint64]bool)
+	for _, id := range groupsid {
+		groups[id] = true
+	}
+
+	if _, ok := groups[selfid]; !ok {
+		// ERROR CASE
+		return nil
+	}
+
+	sp := &spaxos{
+		id:        selfid,
+		groups:    groups,
+		minIndex:  minIndex,
+		maxIndex:  maxIndex,
+		allSps:    make(map[uint64]*spaxosInstance),
+		mySps:     make(map[uint64]*spaxosInstance),
+		handOn:    make(map[uint64][]pb.Message),
+		currState: newSpaxosState()}
+	//		chosen:   make(map[uint64][]byte)}
+	assert(nil != sp)
+	return sp
 }
 
 func (sp *spaxos) newSpaxosInstance() *spaxosInstance {
 	// find the max idx num
 	sp.maxIndex += 1
-	ins := &spaxosInstance{index: sp.maxIndex, sp: sp}
+	ins := &spaxosInstance{
+		index: sp.maxIndex, sp: sp,
+		proposer: &roleProposer{}, acceptor: &roleAcceptor{}}
 	_, ok := sp.allSps[sp.maxIndex]
 	assert(false == ok)
 
@@ -148,12 +230,13 @@ func (sp *spaxos) getSpaxosInstance(msg pb.Message) *spaxosInstance {
 		if index < sp.minIndex {
 			sp.fifoIndex = append(sp.fifoIndex, index)
 			sp.handOn[index] = append(sp.handOn[index], msg)
-			sp.rebuild = append(sp.rebuild, index)
+			sp.currState.rebuild = append(sp.currState.rebuild, index)
 			return nil
 		}
 
 		// create a new ins
-		ins = &spaxosInstance{index: index, sp: sp}
+		ins = &spaxosInstance{index: index, sp: sp,
+			proposer: &roleProposer{}, acceptor: &roleAcceptor{}}
 		sp.allSps[index] = ins
 		sp.maxIndex = max(sp.maxIndex, index)
 	}
@@ -187,6 +270,7 @@ func (sp *spaxos) Step(msg pb.Message) {
 		} else {
 			// 0 == msg.Index
 			ins = sp.newSpaxosInstance()
+			log.Printf("==> newSpaxosInstance index %d", ins.index)
 		}
 
 		assert(nil != ins)
@@ -214,6 +298,7 @@ func (sp *spaxos) Step(msg pb.Message) {
 	ins := sp.getSpaxosInstance(msg)
 	if nil == ins {
 		// handOn: wait for ins rebuild
+		print("wait to rebuild ins")
 		return
 	}
 
