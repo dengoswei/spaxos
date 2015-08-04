@@ -24,6 +24,7 @@ func (ins *spaxosInstance) reportChosen(value []byte) {
 }
 
 func (ins *spaxosInstance) append(msg pb.Message) {
+	assert(nil != ins.sp)
 	ins.sp.appendMsg(msg)
 }
 
@@ -91,9 +92,15 @@ func (ins *spaxosInstance) step(msg pb.Message) (bool, error) {
 		fallthrough
 	case pb.MsgAccpt:
 		return ins.acceptor.step(ins, msg)
+	case pb.MsgPropResp:
+		fallthrough
+	case pb.MsgAccptResp:
+		return ins.proposer.step(ins, msg)
 	}
 
-	return ins.proposer.step(ins, msg)
+	log.Fatal("msg invalid step type %s",
+		pb.MessageType_name[int32(msg.Type)])
+	return false, errors.New("spaxos: invalid step msg.Type")
 }
 
 type spaxosState struct {
@@ -166,6 +173,7 @@ func (sp *spaxos) appendMsg(msg pb.Message) {
 		msg.From = sp.id
 	}
 	assert(msg.From == sp.id)
+	assert(nil != sp.currState)
 	sp.currState.msgs = append(sp.currState.msgs, msg)
 }
 
@@ -299,6 +307,14 @@ func (sp *spaxos) Step(msg pb.Message) {
 	if nil == ins {
 		// handOn: wait for ins rebuild
 		print("wait to rebuild ins")
+		return
+	}
+
+	if pb.MsgChosen == msg.Type {
+		printMsg("msgChosen Test", msg)
+		// chosen
+		assert(msg.Index == ins.index)
+		ins.reportChosen(msg.Entry.Value)
 		return
 	}
 

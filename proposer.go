@@ -52,11 +52,27 @@ func (p *roleProposer) beginPrepare(ins *spaxosInstance) {
 func (p *roleProposer) beginAccept(ins *spaxosInstance) {
 	p.votes = make(map[uint64]bool)
 
-	msg := pb.Message{Type: pb.MsgAccpt,
-		Index: ins.index, Entry: pb.PaxosEntry{
-			PropNum: p.maxProposedNum, Value: p.proposingValue}}
+	msg := pb.Message{
+		Type:  pb.MsgAccpt,
+		Index: ins.index,
+		Entry: pb.PaxosEntry{
+			PropNum: p.maxProposedNum,
+			Value:   p.proposingValue}}
 
 	ins.append(msg)
+}
+
+func (p *roleProposer) beginChosen(ins *spaxosInstance) {
+	msg := pb.Message{
+		Type:  pb.MsgChosen,
+		Index: ins.index,
+		Entry: pb.PaxosEntry{
+			Value: p.proposingValue}}
+	assert(nil != ins)
+	ins.append(msg)
+
+	//printMsg("beginChosen", msg)
+	//ins.reportChosen(p.proposingValue)
 }
 
 type stepFunc func(ins *spaxosInstance, msg pb.Message) (bool, error)
@@ -138,8 +154,9 @@ func (p *roleProposer) stepAccept(
 	p.votes[msg.From] = !msg.Reject
 	if ins.trueByMajority(p.votes) {
 		// accpeted by majority
+		p.beginChosen(ins)
 		p.step = p.stepChosen
-		ins.reportChosen(p.proposingValue)
+		println("***** test chosen")
 		return true, nil
 	} else if ins.falseByMajority(p.votes) {
 		// reject by majority

@@ -97,17 +97,18 @@ func printChosen(chosen map[uint64][]byte, chosenc chan []byte) {
 	}
 }
 
-func runSpaxos(selfid uint64, groupsid []uint64, n node, s *SNet, chosenc chan []byte) {
+func runSpaxos(
+	selfid uint64, groupsid []uint64, n node, s *SNet, chosenc chan []byte) {
 	assert(nil != s)
 	i := 0
 	for {
 		rd := <-n.readyc
 		if 0 != len(rd.Chosen) {
+			println("^^^ chosen", selfid, len(rd.Chosen))
 			printChosen(rd.Chosen, chosenc)
 		}
 
 		i += 1
-		println("runSpaxos", i, selfid)
 		if 0 != len(rd.States) {
 			println("== store states", selfid)
 		}
@@ -167,11 +168,12 @@ func TestBuild(t *testing.T) {
 		assert(nil == err)
 	}
 
-	chosenc := make(chan []byte)
+	ccs := make([]chan []byte, nodeCnt)
 	for i := 0; i < nodeCnt; i += 1 {
 		go snets[i].RunSendMsg()
 		go attach(ns[i], snets[i])
-		go runSpaxos(groupsid[i], groupsid, ns[i], snets[i], chosenc)
+		ccs[i] = make(chan []byte)
+		go runSpaxos(groupsid[i], groupsid, ns[i], snets[i], ccs[i])
 	}
 
 	for i := 0; i < 10; i += 1 {
@@ -179,15 +181,28 @@ func TestBuild(t *testing.T) {
 			Id: uint64(2000 + i), Value: []byte(randString(100))}
 		value, err := pv.Marshal()
 		assert(nil == err)
-		println("***", i%len(ns), len(ns))
-		err = ns[i%len(ns)].Propose(value)
+
+		pidx := i % len(ns)
+		err = ns[pidx].Propose(value)
 		assert(nil == err)
 
-		cvalue := <-chosenc
+		cvalue := <-ccs[pidx]
 		newpv := pb.ProposeValue{}
 		err = newpv.Unmarshal(cvalue)
 		assert(nil == err)
 		assert(pv.Id == newpv.Id)
 		assert(string(pv.Value) == string(newpv.Value))
+		for idx := range groupsid {
+			if pidx == idx {
+				continue
+			}
+
+			cvalue = <-ccs[idx]
+			newpv = pb.ProposeValue{}
+			err = newpv.Unmarshal(cvalue)
+			assert(nil == err)
+			assert(pv.Id == newpv.Id)
+			assert(string(pv.Value) == string(newpv.Value))
+		}
 	}
 }
