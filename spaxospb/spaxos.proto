@@ -29,6 +29,8 @@ enum MessageType {
     MsgCliProp          = 12;
     MsgInsRebuild       = 13;
     MsgChosen           = 14;
+
+    MsgInvalid          = 0xFF;
 }
 
 message PaxosEntry {

@@ -10,13 +10,84 @@ import (
 const MaxNodeID uint64 = 1024
 
 type spaxosInstance struct {
-	index    uint64
-	proposer *roleProposer
-	acceptor *roleAcceptor
+	chosen bool
+	index  uint64
+	// proposer
+	maxProposedNum uint64
+	maxPromisedNum uint64
+	proposingValue []byte
+	pRspVotes      map[uint64]bool
+	aRspVotes      map[uint64]bool
 
-	hs pb.HardState
-	// ref
-	sp *spaxos
+	// acceptor
+	promisedNum   uint64
+	acceptedNum   uint64
+	acceptedValue []byte
+}
+
+func getMsgRespType(msgType pb.MessageType) pb.MessageType {
+	switch msgType {
+	case pb.MsgProp:
+		return pb.MsgPropResp
+	case pb.MsgAccpt:
+		return pb.MsgAccptResp
+	}
+	return pb.MsgInvalid
+}
+
+func (ins *spaxosInstance) Step(sp *spaxos, msg pb.Message) {
+	assert(msg.Index == ins.index)
+	assert(false == ins.chosen)
+	assert(ins.acceptedNum <= ins.promisedNum)
+
+	rsp := pb.Message{
+		Type: getMsgRespType(msg.Type), Reject: false,
+		Index: msg.Index, From: msg.To, To: msg.From,
+	}
+
+	switch msg.Type {
+	// accepter
+	case pb.MsgProp:
+		fallthrough
+	case pb.MsgAccpt:
+		if msg.Entry.PropNum < ins.promisedNum {
+			rsp.Reject = true
+			sp.appendMsg(rsp)
+			return
+		}
+
+		ins.promisedNum = msg.Entry.PropNum
+		if msg.Type == pb.MsgProp &&
+			nil != ins.acceptedValue {
+			rsp.Entry.AccptNum = ins.acceptedNum
+			rsp.Entry.Value = ins.acceptedValue
+		}
+
+		if msg.Type == pb.MsgAccpt {
+			assert(nil != msg.Entry.Value)
+			ins.acceptedNum = msg.Entry.PropNum
+			ins.acceptedValue = msg.Entry.Value
+		}
+
+		sp.appendMsg(rsp)
+		sp.appendHardState(pb.HardState{
+			MaxProposedNum: ins.maxProposedNum,
+			MaxPromisedNum: ins.promisedNum,
+			MaxAcceptedNum: ins.acceptedNum,
+			AcceptedValue:  ins.acceptedValue})
+
+		// proposer
+	case pb.MsgPropResp:
+		if ins.maxProposedNum != msg.Entry.PropNum {
+			return
+		}
+
+		// TODO
+		ins.pRspVotes[msg.From] = !msg.Reject
+
+	case pb.MsgAccptResp:
+	}
+
 }
 
 func (ins *spaxosInstance) reportChosen(value []byte) {
@@ -175,6 +246,10 @@ func (sp *spaxos) appendMsg(msg pb.Message) {
 	assert(msg.From == sp.id)
 	assert(nil != sp.currState)
 	sp.currState.msgs = append(sp.currState.msgs, msg)
+}
+
+func (sp *spaxos) appendHardState(hs pb.HardState) {
+	sp.currState.hss = append(sp.currState.hss, hs)
 }
 
 func (sp *spaxos) appendHSS(hs pb.HardState) {
