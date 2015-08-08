@@ -1,5 +1,6 @@
+## raft like spaxos
 
-## Assumption
+### Assumption
 1. a proposing request will contain req-id + req-value; the req-id need to be unique;
 2. spaxos don't gurante a propsing request will eventually be chosen. client can only
    sure propsing request been chosen by checking the chosen item return by spaxos with
