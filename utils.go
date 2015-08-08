@@ -76,6 +76,33 @@ func RandSpaxosInstance() *spaxosInstance {
 	return ins
 }
 
+func RandSpaxos() *spaxos {
+	const groupCnt = uint64(9)
+	id := uint64(rand.Intn(int(groupCnt)))
+	groups := make(map[uint64]bool, groupCnt)
+	for idx := uint64(1); idx <= groupCnt; idx += 1 {
+		groups[idx] = true
+	}
+
+	sp := &spaxos{id: id, groups: groups}
+	return sp
+}
+
+func RandRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
+	cnt := falseCnt + trueCnt
+	rspVotes := make(map[uint64]bool, cnt)
+
+	for id := uint64(1); id <= falseCnt; id += 1 {
+		rspVotes[id] = false
+	}
+
+	for id := falseCnt + 1; id <= cnt; id += 1 {
+		rspVotes[id] = true
+	}
+
+	return rspVotes
+}
+
 func PrintIndicate() {
 	pc, file, line, ok := runtime.Caller(1)
 	assert(true == ok)
