@@ -39,16 +39,6 @@ func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 	return &ins
 }
 
-func getMsgRespType(msgType pb.MessageType) pb.MessageType {
-	switch msgType {
-	case pb.MsgProp:
-		return pb.MsgPropResp
-	case pb.MsgAccpt:
-		return pb.MsgAccptResp
-	}
-	return pb.MsgInvalid
-}
-
 func (ins *spaxosInstance) getHardState() pb.HardState {
 	return pb.HardState{
 		Chosen:         ins.chosen,

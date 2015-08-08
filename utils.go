@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/op/go-logging"
 	"math/rand"
+	"runtime"
 )
 
 var log = logging.MustGetLogger("spaxos")
@@ -72,6 +73,11 @@ func RandSpaxosInstance() *spaxosInstance {
 	ins.promisedNum = RandUint64()
 	ins.acceptedNum = MinUint64(ins.promisedNum, RandUint64())
 	ins.acceptedValue = RandByte(rand.Intn(100))
-
 	return ins
+}
+
+func PrintIndicate() {
+	pc, file, line, ok := runtime.Caller(1)
+	assert(true == ok)
+	fmt.Printf("[%s %s %d]\n", runtime.FuncForPC(pc).Name(), file, line)
 }
