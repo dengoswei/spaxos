@@ -123,11 +123,12 @@ func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 
 type HardState struct {
-	Index            uint64 `protobuf:"varint,1,opt,name=index" json:"index"`
-	MaxProposedNum   uint64 `protobuf:"varint,2,opt,name=maxProposedNum" json:"maxProposedNum"`
-	MaxPromisedNum   uint64 `protobuf:"varint,3,opt,name=maxPromisedNum" json:"maxPromisedNum"`
-	MaxAcceptedNum   uint64 `protobuf:"varint,4,opt,name=maxAcceptedNum" json:"maxAcceptedNum"`
-	AcceptedValue    []byte `protobuf:"bytes,5,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
+	Chosen           bool   `protobuf:"varint,1,opt,name=chosen" json:"chosen"`
+	Index            uint64 `protobuf:"varint,2,opt,name=index" json:"index"`
+	MaxProposedNum   uint64 `protobuf:"varint,3,opt,name=maxProposedNum" json:"maxProposedNum"`
+	MaxPromisedNum   uint64 `protobuf:"varint,4,opt,name=maxPromisedNum" json:"maxPromisedNum"`
+	MaxAcceptedNum   uint64 `protobuf:"varint,5,opt,name=maxAcceptedNum" json:"maxAcceptedNum"`
+	AcceptedValue    []byte `protobuf:"bytes,6,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
@@ -438,6 +439,23 @@ func (m *HardState) Unmarshal(data []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Chosen", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Chosen = bool(v != 0)
+		case 2:
+			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
 			}
 			m.Index = 0
@@ -452,7 +470,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 2:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxProposedNum", wireType)
 			}
@@ -468,7 +486,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxPromisedNum", wireType)
 			}
@@ -484,7 +502,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxAcceptedNum", wireType)
 			}
@@ -500,7 +518,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AcceptedValue", wireType)
 			}
@@ -756,6 +774,7 @@ func (m *Message) Size() (n int) {
 func (m *HardState) Size() (n int) {
 	var l int
 	_ = l
+	n += 2
 	n += 1 + sovSpaxos(uint64(m.Index))
 	n += 1 + sovSpaxos(uint64(m.MaxProposedNum))
 	n += 1 + sovSpaxos(uint64(m.MaxPromisedNum))
@@ -904,18 +923,26 @@ func (m *HardState) MarshalTo(data []byte) (n int, err error) {
 	_ = l
 	data[i] = 0x8
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Index))
+	if m.Chosen {
+		data[i] = 1
+	} else {
+		data[i] = 0
+	}
+	i++
 	data[i] = 0x10
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.MaxProposedNum))
+	i = encodeVarintSpaxos(data, i, uint64(m.Index))
 	data[i] = 0x18
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.MaxPromisedNum))
+	i = encodeVarintSpaxos(data, i, uint64(m.MaxProposedNum))
 	data[i] = 0x20
+	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.MaxPromisedNum))
+	data[i] = 0x28
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.MaxAcceptedNum))
 	if m.AcceptedValue != nil {
-		data[i] = 0x2a
+		data[i] = 0x32
 		i++
 		i = encodeVarintSpaxos(data, i, uint64(len(m.AcceptedValue)))
 		i += copy(data[i:], m.AcceptedValue)

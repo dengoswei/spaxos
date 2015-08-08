@@ -52,11 +52,12 @@ message Message {
 }
 
 message HardState {
-    optional uint64  index           = 1 [(gogoproto.nullable) = false];
-    optional uint64  maxProposedNum  = 2 [(gogoproto.nullable) = false];
-    optional uint64  maxPromisedNum  = 3 [(gogoproto.nullable) = false];
-    optional uint64  maxAcceptedNum  = 4 [(gogoproto.nullable) = false];
-    optional bytes   acceptedValue   = 5;
+    optional bool    chosen          = 1 [(gogoproto.nullable) = false];
+    optional uint64  index           = 2 [(gogoproto.nullable) = false];
+    optional uint64  maxProposedNum  = 3 [(gogoproto.nullable) = false];
+    optional uint64  maxPromisedNum  = 4 [(gogoproto.nullable) = false];
+    optional uint64  maxAcceptedNum  = 5 [(gogoproto.nullable) = false];
+    optional bytes   acceptedValue   = 6;
 }
 
 
