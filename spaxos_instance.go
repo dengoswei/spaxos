@@ -132,9 +132,12 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 		Type: pb.MsgProp, Index: ins.index, From: sp.id,
 		Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
 
-	rsp := ins.updatePromised(req)
-	assert(false == rsp.Reject)
-	assert(0 == rsp.From)
+	// optimize: local check first
+	{
+		rsp := ins.updatePromised(req)
+		assert(false == rsp.Reject)
+		assert(0 == rsp.From)
+	}
 
 	ins.rspVotes = make(map[uint64]bool)
 	ins.rspVotes[sp.id] = true
@@ -157,17 +160,20 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 		Entry: pb.PaxosEntry{
 			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
 
-	rsp := ins.updateAccepted(req)
-	if true == rsp.Reject {
-		// reject by self
-		// => backoff to beginPreparePhase
-		// NOTE: this may cause live lock
-		ins.beginPreparePhase(sp)
-		return
-	}
+	// optimize: local check first
+	{
+		rsp := ins.updateAccepted(req)
+		if true == rsp.Reject {
+			// reject by self
+			// => backoff to beginPreparePhase
+			// NOTE: this may cause live lock
+			ins.beginPreparePhase(sp)
+			return
+		}
 
-	assert(false == rsp.Reject)
-	assert(rsp.From == req.From)
+		assert(false == rsp.Reject)
+		assert(0 == rsp.From)
+	}
 
 	ins.rspVotes = make(map[uint64]bool)
 	ins.rspVotes[sp.id] = true

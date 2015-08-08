@@ -143,14 +143,74 @@ func TestUpdateAccepted(t *testing.T) {
 func TestStepAcceptor(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance()
-	assert(nil != ins)
-	sp := randSpaxos()
-	assert(nil != sp)
+	// case 1:
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.proposingValue = RandByte(100)
+
+		remoteIns := randSpaxosInstance()
+		remoteIns.index = ins.index
+		assert(nil != remoteIns)
+		var remoteSp *spaxos
+		for {
+			remoteSp = randSpaxos()
+			assert(nil != remoteSp)
+			if sp.id != remoteSp.id {
+				break
+			}
+		}
+
+		remoteIns.chosen = false
+
+		// prepare
+		for {
+			ins.beginPreparePhase(sp)
+			propMsg := sp.outMsgs[0]
+			propMsg.To = remoteSp.id
+			remoteIns.stepAcceptor(remoteSp, propMsg)
+
+			assert(1 == len(remoteSp.outMsgs))
+			propRsp := remoteSp.outMsgs[0]
+			remoteSp.outMsgs = nil
+			sp.outMsgs = nil
+			sp.outHardStates = nil
+			if false == propRsp.Reject {
+				// promised
+				assert(1 == len(remoteSp.outHardStates))
+				remoteSp.outHardStates = nil
+				break
+			}
+		}
+
+		// accept
+		{
+			ins.beginAcceptPhase(sp)
+			accptMsg := sp.outMsgs[0]
+			accptMsg.To = remoteSp.id
+			assert(pb.MsgAccpt == accptMsg.Type)
+			remoteIns.stepAcceptor(remoteSp, accptMsg)
+
+			assert(1 == len(remoteSp.outMsgs))
+			accptRsp := remoteSp.outMsgs[0]
+			remoteSp.outMsgs = nil
+			sp.outMsgs = nil
+			sp.outHardStates = nil
+			assert(false == accptRsp.Reject)
+			// accpted
+			assert(1 == len(remoteSp.outHardStates))
+			hs := remoteSp.outHardStates[0]
+			assert(nil != hs.AcceptedValue)
+			remoteSp.outHardStates = nil
+		}
+	}
 }
 
-// test proposer
-
+// TEST: proposer
 func TestBeginPreparePhase(t *testing.T) {
 	printIndicate()
 
@@ -205,7 +265,7 @@ func TestBeginPreparePhase(t *testing.T) {
 func TestBeginAcceptPhase(t *testing.T) {
 	printIndicate()
 
-	// case 1
+	// case 1: chosen item
 	{
 		ins := randSpaxosInstance()
 		assert(nil != ins)
@@ -219,14 +279,44 @@ func TestBeginAcceptPhase(t *testing.T) {
 		assert(0 == len(sp.outHardStates))
 	}
 
-	// case 2
+	// case 2:
 	{
 		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
-	}
 
+		ins.chosen = false
+		ins.proposingValue = RandByte(100)
+		assert(nil != ins.proposingValue)
+		// setting up: proposedNum, promiseNum
+		ins.beginPreparePhase(sp)
+		ins.beginAcceptPhase(sp)
+
+		// check ins stat
+		assert(ins.maxProposedNum == ins.promisedNum)
+		assert(ins.maxProposedNum == ins.acceptedNum)
+		assert(0 == bytes.Compare(ins.proposingValue, ins.acceptedValue))
+
+		// check msg & hard state
+		assert(2 == len(sp.outMsgs))
+		accptMsg := sp.outMsgs[1]
+		assert(pb.MsgAccpt == accptMsg.Type)
+		assert(ins.index == accptMsg.Index)
+		assert(sp.id == accptMsg.From)
+		assert(0 == accptMsg.To)
+		assert(ins.maxProposedNum == accptMsg.Entry.PropNum)
+		assert(0 == bytes.Compare(
+			ins.proposingValue, accptMsg.Entry.Value))
+
+		assert(2 == len(sp.outHardStates))
+		hs := sp.outHardStates[1]
+		{
+			newins := rebuildSpaxosInstance(hs)
+			assert(nil != newins)
+			assert(true == ins.Equal(newins))
+		}
+	}
 }
 
 func TestPropose(t *testing.T) {
@@ -285,4 +375,52 @@ func TestRspVotes(t *testing.T) {
 	assert(false == ok)
 	ok = rejectedByMajority(sp, randRspVotes(cnt/2+1, 0))
 	assert(true == ok)
+}
+
+func TestMarkChosen(t *testing.T) {
+	printIndicate()
+
+	// case 1
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.markChosen(sp, false)
+		assert(true == ins.chosen)
+		assert(0 == len(sp.outMsgs))
+		assert(0 == len(sp.outHardStates))
+	}
+
+	// case 2
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.markChosen(sp, true)
+		assert(true == ins.chosen)
+		assert(1 == len(sp.outMsgs))
+		assert(0 == len(sp.outHardStates))
+
+		chosenMsg := sp.outMsgs[0]
+		assert(pb.MsgChosen == chosenMsg.Type)
+		assert(ins.index == chosenMsg.Index)
+		assert(sp.id == chosenMsg.From)
+		assert(0 == chosenMsg.To)
+		assert(nil != chosenMsg.Entry.Value)
+		assert(0 == bytes.Compare(ins.acceptedValue, chosenMsg.Entry.Value))
+	}
+}
+
+func TestStepPrepareRsp(t *testing.T) {
+	// TODO
+}
+
+func TestStepAcceptRsp(t *testing.T) {
+	// TODO
 }
