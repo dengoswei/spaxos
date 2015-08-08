@@ -9,20 +9,23 @@ import (
 
 const MaxNodeID uint64 = 1024
 
+type stepSpaxosFunc func(sp *spaxos, msg pb.Message)
+
 type spaxosInstance struct {
 	chosen bool
 	index  uint64
 	// proposer
-	maxProposedNum uint64
-	maxPromisedNum uint64
-	proposingValue []byte
-	pRspVotes      map[uint64]bool
-	aRspVotes      map[uint64]bool
+	maxProposedNum     uint64
+	maxAcceptedHintNum uint64
+	proposingValue     []byte
+	rspVotes           map[uint64]bool
+	stepProp           stepSpaxosFunc
 
 	// acceptor
 	promisedNum   uint64
 	acceptedNum   uint64
 	acceptedValue []byte
+	stepAccpt     stepSpaxosFunc
 }
 
 func getMsgRespType(msgType pb.MessageType) pb.MessageType {
@@ -33,6 +36,214 @@ func getMsgRespType(msgType pb.MessageType) pb.MessageType {
 		return pb.MsgAccptResp
 	}
 	return pb.MsgInvalid
+}
+
+func (ins *spaxosInstance) getHardState() pb.HardState {
+	return pb.HardState{
+		MaxProposedNum: ins.maxProposedNum,
+		MaxPromisedNum: ins.promisedNum,
+		MaxAcceptedNum: ins.acceptedNum,
+		AcceptedValue:  ins.acceptedValue}
+}
+
+func getDefaultRspMsg(msg pb.Message) pb.Message {
+	return pb.Message{Reject: false,
+		Index: msg.Index, From: msg.To, To: msg.From,
+		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
+}
+
+func (ins *spaxosInstance) updatePromised(msg pb.Message) pb.Message {
+	rsp := getDefaultRspMsg(msg)
+	rsp.Type = pb.MsgPropResp
+	if ins.promisedNum > msg.Entry.PropNum {
+		rsp.Reject = true
+		return rsp
+	}
+
+	if nil != ins.acceptedValue {
+		rsp.Entry.AccptNum = ins.acceptedNum
+		rsp.Entry.Value = ins.acceptedValue
+	}
+
+	ins.promisedNum = msg.Entry.PropNum
+	return rsp
+}
+
+func (ins *spaxosInstance) updateAccepted(msg pb.Message) pb.Message {
+	rsp := getDefaultRspMsg(msg)
+	rsp.Type = pb.MsgAccptResp
+	if ins.promisedNum > msg.Entry.PropNum {
+		rsp.Reject = true
+		return rsp
+	}
+
+	assert(nil != msg.Entry.Value)
+	ins.promisedNum = msg.Entry.PropNum
+	ins.acceptedNum = msg.Entry.PropNum
+	ins.acceptedValue = msg.Entry.Value
+	return rsp
+}
+
+func (ins *spaxosInstance) stepPromised(
+	sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+	assert(pb.MsgProp == msg.Type)
+
+	rsp := ins.updatePromised(msg)
+	sp.appendMsg(rsp)
+	if false == rsp.Reject {
+		sp.appendHardState(ins.getHardState())
+	}
+}
+
+func (ins *spaxosInstance) stepAccepted(
+	sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+	assert(pb.MsgAccpt == msg.Type)
+
+	rsp := ins.updateAccepted(msg)
+	sp.appendMsg(rsp)
+	if false == rsp.Reject {
+		sp.appendHardState(ins.getHardState())
+	}
+}
+
+// proposer
+func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
+	assert(nil != sp)
+	if ins.chosen {
+		ins.markChosen(sp)
+		return
+	}
+
+	// inc ins.maxProposedNum
+	nextProposeNum := sp.getNextProposeNum(
+		ins.maxProposedNum, ins.promisedNum)
+
+	req := pb.Message{
+		Type: pb.MsgProp, Index: ins.index, From: sp.id,
+		Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
+
+	rsp := ins.updatePromised(req)
+	assert(false == rsp.Reject)
+	assert(rsp.From == req.From)
+
+	ins.rspVotes = make(map[uint64]bool)
+	ins.rspVotes[sp.id] = true
+	ins.maxProposedNum = nextProposeNum
+	ins.stepProp = ins.stepPrepareRsp
+
+	sp.appendMsg(req)
+	sp.appendHardState(ins.getHardState())
+}
+
+func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
+	assert(nil != sp)
+	// TODO:
+	// accepted action when ins is chosen ?
+	req := pb.Message{
+		Type: pb.MsgAccpt, Index: ins.index, From: sp.id,
+		Entry: pb.PaxosEntry{
+			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
+
+	rsp := ins.updateAccepted(req)
+	if true == rsp.Reject {
+		// reject by self
+		// => backoff to beginPreparePhase
+		// NOTE: this may cause live lock
+		ins.beginPreparePhase(sp)
+		return
+	}
+
+	assert(false == rsp.Reject)
+	assert(rsp.From == req.From)
+
+	ins.rspVotes = make(map[uint64]bool)
+	ins.rspVotes[sp.id] = true
+	ins.stepProp = ins.stepAcceptRsp
+
+	sp.appendMsg(req)
+	sp.appendHardState(ins.getHardState())
+}
+
+func (ins *spaxosInstance) markChosen(sp *spaxos) {
+	assert(nil != sp)
+
+	ins.chosen = true
+	sp.submitChosen(ins)
+	ins.stepProp = ins.stepChosen
+}
+
+func (ins *spaxosInstance) stepPrepareRsp(
+	sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+
+	// TODO
+	// only deal with MsgPropResp msg;
+	if pb.MsgPropResp != msg.Type ||
+		ins.maxProposedNum != msg.Entry.PropNum {
+		return // ignore the mismatch prop num msg
+	}
+
+	if val, ok := ins.rspVotes[msg.From]; ok {
+		// inconsist !
+		assert(val == msg.Reject)
+		return
+	}
+
+	ins.rspVotes[msg.From] = !msg.Reject
+	if false == msg.Reject {
+		// update the maxAcceptedHitNum & proposingValue
+		if ins.maxAcceptedHintNum < msg.Entry.AccptNum {
+			ins.maxAcceptedHintNum = msg.Entry.AccptNum
+			ins.proposingValue = msg.Entry.Value
+			assert(nil != ins.proposingValue)
+		}
+	}
+
+	if ins.trueByMajority(ins.rspVotes) {
+		ins.beginAcceptPhase(sp)
+	} else if ins.falseByMajority(ins.rspVotes) {
+		ins.beginPreparePhase(sp)
+	}
+}
+
+func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+
+	// TODO
+	// only deal with MsgAccptResp msg;
+	if pb.MsgAccptResp != msg.Type ||
+		ins.maxProposedNum != msg.Entry.PropNum {
+		return // ignore the mismatch prop num msg
+	}
+
+	if val, ok := ins.rspVotes[msg.From]; ok {
+		// inconsist !
+		assert(val == msg.Reject)
+		return
+	}
+
+	ins.rspVotes[msg.From] = !msg.Reject
+	if ins.trueByMajority(ins.rspVotes) {
+		ins.markChosen(sp)
+	} else if ins.falseByMajority(ins.rspVotes) {
+		ins.beginPreparePhase(sp)
+	}
+}
+
+func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+	assert(true == ins.chosen)
+
+	switch msg.Type {
+	// TODO
+	}
 }
 
 func (ins *spaxosInstance) Step(sp *spaxos, msg pb.Message) {
@@ -90,34 +301,6 @@ func (ins *spaxosInstance) Step(sp *spaxos, msg pb.Message) {
 
 }
 
-func (ins *spaxosInstance) reportChosen(value []byte) {
-	ins.sp.reportChosen(ins.index, value)
-}
-
-func (ins *spaxosInstance) append(msg pb.Message) {
-	assert(nil != ins.sp)
-	ins.sp.appendMsg(msg)
-}
-
-func (ins *spaxosInstance) updatePropHardState(maxPropNum uint64) {
-	hs := ins.hs
-	assert(hs.MaxProposedNum < maxPropNum)
-	hs.MaxProposedNum = maxPropNum
-	ins.sp.appendHSS(hs)
-}
-
-func (ins *spaxosInstance) updateAccptHardState(
-	maxPromisedNum, maxAcceptedNum uint64, acceptedValue []byte) {
-	hs := ins.hs
-	assert(hs.MaxPromisedNum <= maxPromisedNum)
-	assert(hs.MaxAcceptedNum <= maxAcceptedNum)
-	hs.MaxPromisedNum = maxPromisedNum
-	hs.MaxAcceptedNum = maxAcceptedNum
-	hs.AcceptedValue = acceptedValue
-
-	ins.sp.appendHSS(hs)
-}
-
 func (ins *spaxosInstance) trueByMajority(votes map[uint64]bool) bool {
 	total := len(ins.sp.groups)
 
@@ -144,34 +327,11 @@ func (ins *spaxosInstance) falseByMajority(votes map[uint64]bool) bool {
 	return falseCnt > total/2
 }
 
-func (ins *spaxosInstance) nextProposeNum(propNum uint64) uint64 {
-	if 0 == propNum {
-		return ins.sp.id
-	}
-
-	return propNum + MaxNodeID
-}
-
-func (ins *spaxosInstance) step(msg pb.Message) (bool, error) {
-	if msg.Index != ins.index {
-		return false, errors.New("spaxos: mismatch index")
-	}
-
-	printMsg("spaxosInstance step", msg)
-	switch msg.Type {
-	case pb.MsgProp:
-		fallthrough
-	case pb.MsgAccpt:
-		return ins.acceptor.step(ins, msg)
-	case pb.MsgPropResp:
-		fallthrough
-	case pb.MsgAccptResp:
-		return ins.proposer.step(ins, msg)
-	}
-
-	log.Fatal("msg invalid step type %s",
-		pb.MessageType_name[int32(msg.Type)])
-	return false, errors.New("spaxos: invalid step msg.Type")
+func (sp *spaxos) getNextProposeNum(prev, hint uint64) uint64 {
+	assert(0 != sp.id)
+	hint = max(prev, hint)
+	next := (hint + MaxNodeID - 1) / MaxNodeID * MaxNodeID
+	return next + sp.id
 }
 
 type spaxosState struct {
@@ -225,6 +385,13 @@ type spaxos struct {
 	//	msgs    []pb.Message
 	//
 	//	prevHSS []pb.HardState
+}
+
+func (sp *spaxos) submitChosen(ins *spaxosInstance) {
+	assert(nil != ins)
+	assert(true == ins.chosen)
+	// TODO
+	// submit ins.index, ins.proposingValue => chosen
 }
 
 func (sp *spaxos) reportChosen(index uint64, value []byte) {
