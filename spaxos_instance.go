@@ -92,9 +92,9 @@ func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 
 	var rsp pb.Message
 	switch msg.Type {
-	case pb.MsgPropResp:
+	case pb.MsgProp:
 		rsp = ins.updatePromised(msg)
-	case pb.MsgAccptResp:
+	case pb.MsgAccpt:
 		rsp = ins.updateAccepted(msg)
 	default:
 		assert(false)
@@ -134,7 +134,7 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 
 	rsp := ins.updatePromised(req)
 	assert(false == rsp.Reject)
-	assert(rsp.From == req.From)
+	assert(0 == rsp.From)
 
 	ins.rspVotes = make(map[uint64]bool)
 	ins.rspVotes[sp.id] = true
@@ -147,8 +147,11 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 
 func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 	assert(nil != sp)
-	// TODO:
-	// accepted action when ins is chosen ?
+	if ins.chosen {
+		ins.markChosen(sp, false)
+		return
+	}
+
 	req := pb.Message{
 		Type: pb.MsgAccpt, Index: ins.index, From: sp.id,
 		Entry: pb.PaxosEntry{

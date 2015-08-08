@@ -1,10 +1,13 @@
 package spaxos
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/op/go-logging"
 	"math/rand"
 	"runtime"
+
+	pb "spaxos/spaxospb"
 )
 
 var log = logging.MustGetLogger("spaxos")
@@ -64,7 +67,7 @@ func RandByte(n int) []byte {
 	return []byte(RandString(n))
 }
 
-func RandSpaxosInstance() *spaxosInstance {
+func randSpaxosInstance() *spaxosInstance {
 	index := RandUint64()
 	ins := newSpaxosInstance(index)
 
@@ -76,9 +79,9 @@ func RandSpaxosInstance() *spaxosInstance {
 	return ins
 }
 
-func RandSpaxos() *spaxos {
+func randSpaxos() *spaxos {
 	const groupCnt = uint64(9)
-	id := uint64(rand.Intn(int(groupCnt)))
+	id := uint64(rand.Intn(int(groupCnt))) + 1
 	groups := make(map[uint64]bool, groupCnt)
 	for idx := uint64(1); idx <= groupCnt; idx += 1 {
 		groups[idx] = true
@@ -88,7 +91,7 @@ func RandSpaxos() *spaxos {
 	return sp
 }
 
-func RandRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
+func randRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
 	cnt := falseCnt + trueCnt
 	rspVotes := make(map[uint64]bool, cnt)
 
@@ -103,8 +106,35 @@ func RandRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
 	return rspVotes
 }
 
-func PrintIndicate() {
+func randId(sp *spaxos, exclude bool) uint64 {
+	for {
+		newid := rand.Intn(len(sp.groups)) + 1
+		if !exclude ||
+			(exclude && uint64(newid) != sp.id) {
+			return uint64(newid)
+		}
+	}
+}
+
+func randPropResp(sp *spaxos, ins *spaxosInstance) pb.Message {
+	msg := pb.Message{
+		Type: pb.MsgProp, Index: ins.index, Reject: false,
+		From: randId(sp, true), To: sp.id,
+		Entry: pb.PaxosEntry{PropNum: ins.maxProposedNum}}
+	return msg
+}
+
+func printIndicate() {
 	pc, file, line, ok := runtime.Caller(1)
 	assert(true == ok)
 	fmt.Printf("[%s %s %d]\n", runtime.FuncForPC(pc).Name(), file, line)
+}
+
+func (ins *spaxosInstance) Equal(insB *spaxosInstance) bool {
+	return ins.chosen == insB.chosen &&
+		ins.index == insB.index &&
+		ins.maxProposedNum == insB.maxProposedNum &&
+		ins.promisedNum == insB.promisedNum &&
+		ins.acceptedNum == insB.acceptedNum &&
+		0 == bytes.Compare(ins.acceptedValue, insB.acceptedValue)
 }
