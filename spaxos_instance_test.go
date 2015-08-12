@@ -417,6 +417,51 @@ func TestMarkChosen(t *testing.T) {
 	}
 }
 
+func helpMajorPromised(sp *spaxos, ins *spaxosInstance) {
+	ins.chosen = false
+	ins.proposingValue = ins.acceptedValue
+	ins.beginPreparePhase(sp)
+	assert(1 == len(sp.outMsgs))
+	assert(1 == len(sp.outHardStates))
+	sp.outMsgs = nil
+	sp.outHardStates = nil
+
+	// phase 1: promised
+	for {
+		if ins.isPromised {
+			break
+		}
+
+		propRsp := randPropRsp(sp, ins)
+		ins.stepProposer(sp, propRsp)
+	}
+}
+
+func helpMajorRejected(sp *spaxos, ins *spaxosInstance) {
+	ins.chosen = false
+	ins.proposingValue = ins.acceptedValue
+	ins.beginPreparePhase(sp)
+	sp.outMsgs = nil
+	sp.outHardStates = nil
+
+	prevPropNum := ins.maxProposedNum
+	// phase 1: reject
+	rejectCnt := 0
+	for {
+		if rejectCnt > len(ins.rspVotes) {
+			break
+		}
+
+		rejectCnt = len(ins.rspVotes)
+
+		propRsp := randPropRsp(sp, ins)
+		propRsp.Reject = true
+		ins.stepProposer(sp, propRsp)
+	}
+
+	assert(prevPropNum < ins.maxProposedNum)
+}
+
 func TestStepPrepareRsp(t *testing.T) {
 	// case 1
 	{
@@ -426,23 +471,7 @@ func TestStepPrepareRsp(t *testing.T) {
 		sp := randSpaxos()
 		assert(nil != sp)
 
-		ins.chosen = false
-		ins.proposingValue = ins.acceptedValue
-		ins.beginPreparePhase(sp)
-		assert(1 == len(sp.outMsgs))
-		assert(1 == len(sp.outHardStates))
-		sp.outMsgs = nil
-		sp.outHardStates = nil
-
-		// phase 1: promised
-		for {
-			if ins.isPromised {
-				break
-			}
-
-			propRsp := randPropResp(sp, ins)
-			ins.stepProposer(sp, propRsp)
-		}
+		helpMajorPromised(sp, ins)
 
 		assert(1 == len(sp.outMsgs))
 		assert(1 == len(sp.outHardStates))
@@ -469,28 +498,8 @@ func TestStepPrepareRsp(t *testing.T) {
 		sp := randSpaxos()
 		assert(nil != sp)
 
-		ins.chosen = false
-		ins.proposingValue = ins.acceptedValue
-		ins.beginPreparePhase(sp)
-		sp.outMsgs = nil
-		sp.outHardStates = nil
+		helpMajorRejected(sp, ins)
 
-		prevPropNum := ins.maxProposedNum
-		// phase 1: reject
-		rejectCnt := 0
-		for {
-			if rejectCnt > len(ins.rspVotes) {
-				break
-			}
-
-			rejectCnt = len(ins.rspVotes)
-
-			propRsp := randPropResp(sp, ins)
-			propRsp.Reject = true
-			ins.stepProposer(sp, propRsp)
-		}
-
-		assert(prevPropNum < ins.maxProposedNum)
 		assert(1 == len(sp.outMsgs))
 		assert(1 == len(sp.outHardStates))
 		propMsg := sp.outMsgs[0]
@@ -514,4 +523,71 @@ func TestStepPrepareRsp(t *testing.T) {
 }
 
 func TestStepAcceptRsp(t *testing.T) {
+	// case 1: succ chosen
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		helpMajorPromised(sp, ins)
+		sp.outMsgs = nil
+		sp.outHardStates = nil
+		for {
+			if ins.chosen {
+				break
+			}
+
+			accptRsp := randAccptRsp(sp, ins)
+			ins.stepProposer(sp, accptRsp)
+		}
+
+		assert(true == ins.chosen)
+		assert(1 == len(sp.outMsgs))
+
+		chosenMsg := sp.outMsgs[0]
+		assert(pb.MsgChosen == chosenMsg.Type)
+		assert(ins.index == chosenMsg.Index)
+		assert(sp.id == chosenMsg.From)
+		assert(0 == chosenMsg.To)
+		assert(nil != chosenMsg.Entry.Value)
+		assert(0 == bytes.Compare(ins.acceptedValue, chosenMsg.Entry.Value))
+	}
+
+	// case 2: fail to chosen
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		helpMajorPromised(sp, ins)
+		assert(true == ins.isPromised)
+
+		prevPropNum := ins.maxProposedNum
+		sp.outMsgs = nil
+		sp.outHardStates = nil
+		for {
+			if false == ins.isPromised {
+				// fall back into stepPrepare
+				break
+			}
+
+			accptRsp := randAccptRsp(sp, ins)
+			accptRsp.Reject = true
+			ins.stepProposer(sp, accptRsp)
+		}
+
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+		assert(prevPropNum < ins.maxProposedNum)
+		propMsg := sp.outMsgs[0]
+		assert(pb.MsgProp == propMsg.Type)
+		assert(ins.index == propMsg.Index)
+		assert(sp.id == propMsg.From)
+		assert(0 == propMsg.To)
+		assert(ins.maxProposedNum == propMsg.Entry.PropNum)
+	}
 }

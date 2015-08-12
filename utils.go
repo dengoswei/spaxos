@@ -116,7 +116,7 @@ func randId(sp *spaxos, exclude bool) uint64 {
 	}
 }
 
-func randPropResp(sp *spaxos, ins *spaxosInstance) pb.Message {
+func randPropRsp(sp *spaxos, ins *spaxosInstance) pb.Message {
 	randid := sp.id
 	for id, _ := range sp.groups {
 		if _, ok := ins.rspVotes[id]; !ok {
@@ -129,6 +129,23 @@ func randPropResp(sp *spaxos, ins *spaxosInstance) pb.Message {
 		Type: pb.MsgPropResp, Index: ins.index, Reject: false,
 		From: randid, To: sp.id,
 		Entry: pb.PaxosEntry{PropNum: ins.maxProposedNum}}
+	return msg
+}
+
+func randAccptRsp(sp *spaxos, ins *spaxosInstance) pb.Message {
+	randid := sp.id
+	for id, _ := range sp.groups {
+		if _, ok := ins.rspVotes[id]; !ok {
+			randid = id
+			break
+		}
+	}
+
+	msg := pb.Message{
+		Type: pb.MsgAccptResp, Index: ins.index, Reject: false,
+		From: randid, To: sp.id,
+		Entry: pb.PaxosEntry{
+			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
 	return msg
 }
 
