@@ -137,7 +137,7 @@ func (m *HardState) String() string { return proto.CompactTextString(m) }
 func (*HardState) ProtoMessage()    {}
 
 type ProposeValue struct {
-	Id               uint64 `protobuf:"varint,1,req,name=id" json:"id"`
+	Reqid            uint64 `protobuf:"varint,1,req,name=reqid" json:"reqid"`
 	Value            []byte `protobuf:"bytes,2,req,name=value" json:"value,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
@@ -586,16 +586,16 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Reqid", wireType)
 			}
-			m.Id = 0
+			m.Reqid = 0
 			for shift := uint(0); ; shift += 7 {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
 				b := data[iNdEx]
 				iNdEx++
-				m.Id |= (uint64(b) & 0x7F) << shift
+				m.Reqid |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -646,7 +646,7 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 		}
 	}
 	if hasFields[0]&uint64(0x00000001) == 0 {
-		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("id")
+		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("reqid")
 	}
 	if hasFields[0]&uint64(0x00000002) == 0 {
 		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("value")
@@ -792,7 +792,7 @@ func (m *HardState) Size() (n int) {
 func (m *ProposeValue) Size() (n int) {
 	var l int
 	_ = l
-	n += 1 + sovSpaxos(uint64(m.Id))
+	n += 1 + sovSpaxos(uint64(m.Reqid))
 	if m.Value != nil {
 		l = len(m.Value)
 		n += 1 + l + sovSpaxos(uint64(l))
@@ -970,7 +970,7 @@ func (m *ProposeValue) MarshalTo(data []byte) (n int, err error) {
 	_ = l
 	data[i] = 0x8
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Id))
+	i = encodeVarintSpaxos(data, i, uint64(m.Reqid))
 	if m.Value == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("value")
 	} else {

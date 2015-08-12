@@ -62,7 +62,7 @@ message HardState {
 
 
 message ProposeValue {
-    required uint64         id       = 1 [(gogoproto.nullable) = false];
+    required uint64         reqid       = 1 [(gogoproto.nullable) = false];
     required bytes          value    = 2;
 }
 

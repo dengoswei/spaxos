@@ -190,7 +190,8 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 	assert(nil != sp)
 
 	ins.chosen = true
-	sp.submitChosen(ins)
+	hs := ins.getHardState()
+	sp.submitChosen(hs)
 	ins.stepProposer = ins.stepChosen
 	if broadcast {
 		req := pb.Message{
