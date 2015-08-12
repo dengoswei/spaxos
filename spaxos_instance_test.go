@@ -418,9 +418,100 @@ func TestMarkChosen(t *testing.T) {
 }
 
 func TestStepPrepareRsp(t *testing.T) {
+	// case 1
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.proposingValue = ins.acceptedValue
+		ins.beginPreparePhase(sp)
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+		sp.outMsgs = nil
+		sp.outHardStates = nil
+
+		// phase 1: promised
+		for {
+			if ins.isPromised {
+				break
+			}
+
+			propRsp := randPropResp(sp, ins)
+			ins.stepProposer(sp, propRsp)
+		}
+
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+		accptMsg := sp.outMsgs[0]
+		assert(pb.MsgAccpt == accptMsg.Type)
+		assert(ins.index == accptMsg.Index)
+		assert(sp.id == accptMsg.From)
+		assert(0 == accptMsg.To)
+		assert(ins.maxProposedNum == accptMsg.Entry.PropNum)
+		assert(0 == bytes.Compare(ins.proposingValue, accptMsg.Entry.Value))
+
+		hs := sp.outHardStates[0]
+		{
+			newins := rebuildSpaxosInstance(hs)
+			assert(true == ins.Equal(newins))
+		}
+	}
+
+	// case 2
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.proposingValue = ins.acceptedValue
+		ins.beginPreparePhase(sp)
+		sp.outMsgs = nil
+		sp.outHardStates = nil
+
+		prevPropNum := ins.maxProposedNum
+		// phase 1: reject
+		rejectCnt := 0
+		for {
+			if rejectCnt > len(ins.rspVotes) {
+				break
+			}
+
+			rejectCnt = len(ins.rspVotes)
+
+			propRsp := randPropResp(sp, ins)
+			propRsp.Reject = true
+			ins.stepProposer(sp, propRsp)
+		}
+
+		assert(prevPropNum < ins.maxProposedNum)
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+		propMsg := sp.outMsgs[0]
+		assert(pb.MsgProp == propMsg.Type)
+		assert(ins.index == propMsg.Index)
+		assert(sp.id == propMsg.From)
+		assert(0 == propMsg.To)
+		assert(ins.maxProposedNum == propMsg.Entry.PropNum)
+
+		hs := sp.outHardStates[0]
+		{
+			newins := rebuildSpaxosInstance(hs)
+			assert(true == ins.Equal(newins))
+		}
+	}
+
+	// case 3
+	{
+	}
 	// TODO
 }
 
 func TestStepAcceptRsp(t *testing.T) {
-	// TODO
 }

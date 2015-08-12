@@ -14,6 +14,7 @@ type spaxosInstance struct {
 	maxAcceptedHintNum uint64
 	proposingValue     []byte
 	rspVotes           map[uint64]bool
+	isPromised         bool
 	stepProposer       stepFunc
 
 	// acceptor
@@ -124,6 +125,7 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 		return
 	}
 
+	ins.isPromised = false
 	// inc ins.maxProposedNum
 	nextProposeNum := sp.getNextProposeNum(
 		ins.maxProposedNum, ins.promisedNum)
@@ -155,6 +157,7 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 		return
 	}
 
+	ins.isPromised = true
 	req := pb.Message{
 		Type: pb.MsgAccpt, Index: ins.index, From: sp.id,
 		Entry: pb.PaxosEntry{
@@ -204,11 +207,13 @@ func (ins *spaxosInstance) stepPrepareRsp(
 
 	// TODO
 	// only deal with MsgPropResp msg;
+	// println("=>", pb.MsgPropResp, msg.Type, ins.maxProposedNum, msg.Entry.PropNum)
 	if pb.MsgPropResp != msg.Type ||
 		ins.maxProposedNum != msg.Entry.PropNum {
 		return // ignore the mismatch prop num msg
 	}
 
+	//	println("==>", msg.From, msg.To, len(ins.rspVotes))
 	if val, ok := ins.rspVotes[msg.From]; ok {
 		// inconsist !
 		assert(val == msg.Reject)
