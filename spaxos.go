@@ -6,13 +6,6 @@ import (
 	pb "spaxos/spaxospb"
 )
 
-const MaxNodeID uint64 = 1024
-
-type storePackage struct {
-	outMsgs       []pb.Message
-	outHardStates []pb.HardState
-}
-
 type spaxos struct {
 	// id of myself
 	id     uint64
@@ -21,7 +14,7 @@ type spaxos struct {
 	// current state
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
-	chosenItem    map[uint64]pb.HardState
+	chosenItems   map[uint64]pb.HardState
 
 	// index & spaxosInstance
 	maxIndex uint64
@@ -97,9 +90,9 @@ type spaxos struct {
 func (sp *spaxos) submitChosen(hs pb.HardState) {
 	assert(true == hs.Chosen)
 
-	val, ok := sp.chosenItem[hs.Index]
+	val, ok := sp.chosenItems[hs.Index]
 	if !ok {
-		sp.chosenItem[hs.Index] = hs
+		sp.chosenItems[hs.Index] = hs
 		return
 	}
 
@@ -146,10 +139,19 @@ func (sp *spaxos) Run() {
 
 // interface to db
 // IMPORTANT:
-// data, err := pb.ProposeValue{Reqid: reqid, Value: value}.Marshal()
-func (sp *spaxos) Propose(data []byte) error {
+// propValue := pb.ProposeValue{Reqid: reqid, Value: value}
+// propItem := pb.ProposeItem{Values: append([]pb.ProposeValue, propValue)}
+// data, err = propItem.Marshal()
+func (sp *spaxos) Propose(data []byte, asMaster bool) error {
+	msgType := pb.MsgCliProp
+	if asMaster {
+		// issue a master propose
+		msgType = pb.MsgMCliProp
+	}
+
+	// data: may contain multiple <reqid, value>
 	propMsg := pb.Message{
-		Type:  pb.MsgCliProp,
+		Type:  msgType,
 		Entry: pb.PaxosEntry{Value: data}}
 	select {
 	case sp.propc <- propMsg:
@@ -163,7 +165,12 @@ func (sp *spaxos) Propose(data []byte) error {
 // map:
 // - key: index
 // - value:
-//   err := pb.ProposeValue{}.Unmarshal(value)
+//   item := pb.ProposeItem{}
+//   err := item.Unmarshal(value)
+//   for _, propValue := range item.values {
+//       reqid := propValue.Reqid
+//       value := propValue.Value
+//   }
 func (sp *spaxos) GetChosenValue() map[uint64][]byte {
 	select {
 	case chosengroup := <-sp.chosenc:
@@ -175,11 +182,125 @@ func (sp *spaxos) GetChosenValue() map[uint64][]byte {
 		}
 
 		return items
-
 		// TODO: add timeout ?
 	}
 
 	return nil
+}
+
+func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
+	if 0 == len(sp.chosenItems) {
+		return nil, nil
+	}
+
+	cits := make([]pb.HardState, len(sp.chosenItems))
+	for idx, hs := range sp.chosenItems {
+		assert(idx == hs.Index)
+		assert(true == hs.Chosen)
+		assert(nil != hs.AcceptedValue)
+		cits = append(cits, hs)
+	}
+
+	assert(len(sp.chosenItems) == len(cits))
+	return sp.chosenc, cits
+}
+
+func (sp *spaxos) getStroagePackage() (chan storePackage, storePackage) {
+	if nil == sp.outMsgs && nil == sp.outHardStates {
+		return nil, storePackage{}
+	}
+
+	return sp.storec, storePackage{
+		outMsgs: sp.outMsgs, outHardStates: sp.outHardStates}
+}
+
+// State Machine Threaed
+func (sp *spaxos) runStateMachine() {
+	var propc chan pb.Message
+
+	myindex := uint64(0)
+	for {
+		// select on propc only if myindex == 0
+		if 0 == myindex {
+			propc = sp.propc
+		} else {
+			propc = nil
+		}
+
+		// select on sp.chosenc only when abs needed
+		chosenc, cits := sp.getChosen()
+
+		// select on sp.storec only when abs needed
+		storec, spkg := sp.getStroagePackage()
+
+		select {
+		case propMsg := <-propc:
+			assert(nil != propMsg.Entry.Value)
+			// assign a index(max+1) & create a new spaxos instace
+			// deal with propMsg
+			// TODO
+
+		case msg := <-sp.recvc:
+			assert(0 != msg.Index)
+			// look up the coresponding spaxos instance
+			// pass msg to spaxos instance
+			// TODO
+
+		case chosenc <- cits:
+			// success send out the chosen items
+			// clean up the chosenItems state
+			sp.chosenItems = make(map[uint64]pb.HardState)
+
+		case storec <- spkg:
+			// clean up state
+			sp.outMsgs = nil
+			sp.outHardStates = nil
+		}
+	}
+}
+
+// Storage Thread
+func (sp *spaxos) runStorage(db Storage) {
+	assert(nil != db)
+
+	var sendingMsgs []pb.Message
+	for {
+		// TODO ?
+		select {
+		case spkg := <-sp.storec:
+			// deal with spkg
+			// TODO
+			outHardStates := spkg.outHardStates
+			outMsgs := spkg.outMsgs
+			assert(nil != outHardStates || nil != outMsgs)
+			// store outhardStates first
+
+			err := db.Store(outHardStates)
+			dropMsgs := false
+			if nil != err {
+				dropMsgs = true
+			}
+
+			// deal with rebuild msg ?
+			for _, msg := range outMsgs {
+				if pb.MsgInsRebuild == msg.Type {
+					assert(0 < msg.Index)
+					// TODO
+					// db.Get()
+				} else if !dropMsgs {
+					sendingMsgs = append(sendingMsgs, msg)
+				}
+			}
+
+		case sp.sendc <- sendingMsgs:
+			// send out msgs
+			sendingMsgs = nil
+		}
+	}
+}
+
+// Network Thread
+func (sp *spaxos) runNetwork(net Network) {
 }
 
 // TODO: smt, st, nt

@@ -13,6 +13,7 @@
 		Message
 		HardState
 		ProposeValue
+		ProposeItem
 */
 package spaxospb
 
@@ -45,8 +46,9 @@ const (
 	MsgTimeOut     MessageType = 10
 	MsgMajorReject MessageType = 11
 	MsgCliProp     MessageType = 12
-	MsgInsRebuild  MessageType = 13
-	MsgChosen      MessageType = 14
+	MsgMCliProp    MessageType = 13
+	MsgInsRebuild  MessageType = 14
+	MsgChosen      MessageType = 15
 	MsgInvalid     MessageType = 255
 )
 
@@ -60,8 +62,9 @@ var MessageType_name = map[int32]string{
 	10:  "MsgTimeOut",
 	11:  "MsgMajorReject",
 	12:  "MsgCliProp",
-	13:  "MsgInsRebuild",
-	14:  "MsgChosen",
+	13:  "MsgMCliProp",
+	14:  "MsgInsRebuild",
+	15:  "MsgChosen",
 	255: "MsgInvalid",
 }
 var MessageType_value = map[string]int32{
@@ -74,8 +77,9 @@ var MessageType_value = map[string]int32{
 	"MsgTimeOut":     10,
 	"MsgMajorReject": 11,
 	"MsgCliProp":     12,
-	"MsgInsRebuild":  13,
-	"MsgChosen":      14,
+	"MsgMCliProp":    13,
+	"MsgInsRebuild":  14,
+	"MsgChosen":      15,
 	"MsgInvalid":     255,
 }
 
@@ -145,6 +149,15 @@ type ProposeValue struct {
 func (m *ProposeValue) Reset()         { *m = ProposeValue{} }
 func (m *ProposeValue) String() string { return proto.CompactTextString(m) }
 func (*ProposeValue) ProtoMessage()    {}
+
+type ProposeItem struct {
+	Values           []ProposeValue `protobuf:"bytes,1,rep,name=values" json:"values"`
+	XXX_unrecognized []byte         `json:"-"`
+}
+
+func (m *ProposeItem) Reset()         { *m = ProposeItem{} }
+func (m *ProposeItem) String() string { return proto.CompactTextString(m) }
+func (*ProposeItem) ProtoMessage()    {}
 
 func init() {
 	proto.RegisterEnum("spaxospb.MessageType", MessageType_name, MessageType_value)
@@ -654,6 +667,74 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 
 	return nil
 }
+func (m *ProposeItem) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Values = append(m.Values, ProposeValue{})
+			if err := m.Values[len(m.Values)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			var sizeOfWire int
+			for {
+				sizeOfWire++
+				wire >>= 7
+				if wire == 0 {
+					break
+				}
+			}
+			iNdEx -= sizeOfWire
+			skippy, err := skipSpaxos(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	return nil
+}
 func skipSpaxos(data []byte) (n int, err error) {
 	l := len(data)
 	iNdEx := 0
@@ -796,6 +877,21 @@ func (m *ProposeValue) Size() (n int) {
 	if m.Value != nil {
 		l = len(m.Value)
 		n += 1 + l + sovSpaxos(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ProposeItem) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for _, e := range m.Values {
+			l = e.Size()
+			n += 1 + l + sovSpaxos(uint64(l))
+		}
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -978,6 +1074,39 @@ func (m *ProposeValue) MarshalTo(data []byte) (n int, err error) {
 		i++
 		i = encodeVarintSpaxos(data, i, uint64(len(m.Value)))
 		i += copy(data[i:], m.Value)
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(data[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *ProposeItem) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *ProposeItem) MarshalTo(data []byte) (n int, err error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for _, msg := range m.Values {
+			data[i] = 0xa
+			i++
+			i = encodeVarintSpaxos(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
