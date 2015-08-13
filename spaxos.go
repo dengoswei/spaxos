@@ -111,6 +111,20 @@ func (sp *spaxos) appendHardState(hs pb.HardState) {
 	sp.outHardStates = append(sp.outHardStates, hs)
 }
 
+func (sp *spaxos) generateRebuildMsg(index uint64) pb.Message {
+	return pb.Message{
+		Type: pb.MsgInsRebuild, From: sp.id, To: sp.id, Index: index}
+}
+
+func (sp *spaxos) handOnMsg(msg pb.Message) {
+	if _, ok := sp.rebuildList[msg.Index]; !ok {
+		rebuildMsg := sp.generateRebuildMsg(msg.Index)
+		sp.appendMsg(rebuildMsg)
+	}
+
+	sp.rebuildList[msg.Index] = append(sp.rebuildList[msg.Index], msg)
+}
+
 func (sp *spaxos) getNextProposeNum(prev, hint uint64) uint64 {
 	assert(0 != sp.id)
 	hint = MaxUint64(prev, hint)
@@ -151,7 +165,7 @@ func (sp *spaxos) Propose(data []byte, asMaster bool) error {
 
 	// data: may contain multiple <reqid, value>
 	propMsg := pb.Message{
-		Type:  msgType,
+		Type: msgType, From: sp.id, To: sp.id,
 		Entry: pb.PaxosEntry{Value: data}}
 	select {
 	case sp.propc <- propMsg:
@@ -215,6 +229,55 @@ func (sp *spaxos) getStroagePackage() (chan storePackage, storePackage) {
 }
 
 // State Machine Threaed
+func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
+	// TODO
+	return nil
+}
+
+func (sp *spaxos) step(msg pb.Message) {
+	assert(0 != msg.Index)
+	assert(sp.id == msg.To)
+
+	// get ins by index
+	ins := sp.getSpaxosInstance(msg.Index)
+	if nil == ins {
+		// not yet available:
+		// => hand on this msg & gen rebuild msg if not yet gen-ed
+		if pb.MsgInsRebuildResp != msg.Type {
+			sp.handOnMsg(msg)
+			return
+		}
+
+		// rebuild ins
+		ins = rebuildSpaxosInstance(msg.Hs)
+		assert(nil != ins)
+		assert(ins.index == msg.Index)
+		// add ins into insgroups
+		// TODO: fix + check
+		sp.insgroup[ins.index] = ins
+
+		prevMsgs, ok := sp.rebuildList[ins.index]
+		if ok {
+			for _, prevMsg := range prevMsgs {
+				sp.step(prevMsg)
+			}
+		}
+	}
+
+	switch msg.Type {
+	case pb.MsgCliProp:
+		fallthrough
+	case pb.MsgMCliProp:
+
+	case pb.MsgInsRebuildResp:
+		assert(false)
+
+	default:
+
+	}
+
+}
+
 func (sp *spaxos) runStateMachine() {
 	var propc chan pb.Message
 
@@ -236,15 +299,31 @@ func (sp *spaxos) runStateMachine() {
 		select {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
+			propMsg.Index = sp.maxIndex + 1
+			sp.step(propMsg)
+			// TODO
 			// assign a index(max+1) & create a new spaxos instace
 			// deal with propMsg
-			// TODO
+			newindex := sp.maxIndex + 1
+			newins := newSpaxosInstance(newindex)
+			assert(nil != newins)
+			assert(newindex == newins.index)
+			sp.maxIndex = newindex
+			_, ok := sp.insgroup[newindex]
+			assert(false == ok)
+			sp.insgroup[newindex] = newins
+
+			newins.Propose(sp,
+				propMsg.Entry.Value, pb.MsgMCliProp == propMsg.Type)
 
 		case msg := <-sp.recvc:
 			assert(0 != msg.Index)
 			// look up the coresponding spaxos instance
 			// pass msg to spaxos instance
-			// TODO
+			assert(0 != msg.From)
+			if sp.id == msg.To {
+				sp.step(msg)
+			}
 
 		case chosenc <- cits:
 			// success send out the chosen items
@@ -259,17 +338,29 @@ func (sp *spaxos) runStateMachine() {
 	}
 }
 
+func (sp *spaxos) generateBroadcastMsgs(msg pb.Message) []pb.Message {
+	var msgs []pb.Message
+	for id, _ := range sp.groups {
+		if id != sp.id {
+			newmsg := msg
+			newmsg.To = id
+			msgs = append(msgs, newmsg)
+		}
+	}
+
+	return msgs
+}
+
 // Storage Thread
-func (sp *spaxos) runStorage(db Storage) {
+func (sp *spaxos) runStorage(db Storager) {
 	assert(nil != db)
 
 	var sendingMsgs []pb.Message
 	for {
-		// TODO ?
+
 		select {
 		case spkg := <-sp.storec:
 			// deal with spkg
-			// TODO
 			outHardStates := spkg.outHardStates
 			outMsgs := spkg.outMsgs
 			assert(nil != outHardStates || nil != outMsgs)
@@ -281,14 +372,38 @@ func (sp *spaxos) runStorage(db Storage) {
 				dropMsgs = true
 			}
 
-			// deal with rebuild msg ?
+			// deal with rebuild msg
+			// generate broad-cast msg if needed
 			for _, msg := range outMsgs {
 				if pb.MsgInsRebuild == msg.Type {
 					assert(0 < msg.Index)
-					// TODO
-					// db.Get()
+					assert(sp.id == msg.From)
+					assert(sp.id == msg.To)
+
+					rspMsg := pb.Message{
+						Type:   pb.MsgInsRebuildResp,
+						Index:  msg.Index,
+						From:   sp.id,
+						To:     sp.id,
+						Reject: false,
+					}
+
+					hs, err := db.Get(msg.Index)
+					if nil != err {
+						rspMsg.Reject = true
+					} else {
+						rspMsg.Hs = hs
+					}
+
+					sendingMsgs = append(sendingMsgs, rspMsg)
 				} else if !dropMsgs {
-					sendingMsgs = append(sendingMsgs, msg)
+					if uint64(0) == msg.To {
+						// broadcast but myself
+						bmsgs := sp.generateBroadcastMsgs(msg)
+						sendingMsgs = append(sendingMsgs, bmsgs...)
+					} else {
+						sendingMsgs = append(sendingMsgs, msg)
+					}
 				}
 			}
 
@@ -299,8 +414,58 @@ func (sp *spaxos) runStorage(db Storage) {
 	}
 }
 
-// Network Thread
-func (sp *spaxos) runNetwork(net Network) {
+func getMsg(
+	nsendc chan pb.Message,
+	msgs []pb.Message) (chan pb.Message, pb.Message) {
+
+	if nil != msgs {
+		return nsendc, msgs[0]
+	}
+
+	return nil, pb.Message{}
 }
 
-// TODO: smt, st, nt
+// Network Thread
+func (sp *spaxos) runNetwork(net Networker) {
+	var sendingMsgs []pb.Message
+	var forwardingMsgs []pb.Message
+
+	nrecvc := net.GetRecvChan()
+	for {
+		nsendc, smsg := getMsg(net.GetSendChan(), sendingMsgs)
+		assert(sp.id == smsg.From)
+
+		forwardc, fmsg := getMsg(sp.recvc, forwardingMsgs)
+		assert(sp.id == fmsg.From)
+
+		select {
+		// collect msg from network recvc
+		case msg := <-nrecvc:
+			assert(0 < msg.Index)
+			if msg.To == sp.id {
+				forwardingMsgs = append(forwardingMsgs, msg)
+			}
+
+		// collect msgs from st
+		case msgs := <-sp.sendc:
+			for _, msg := range msgs {
+				assert(0 < msg.Index)
+				assert(sp.id == msg.From)
+				if msg.To == sp.id {
+					// forwarding msg
+					forwardingMsgs = append(forwardingMsgs, msg)
+				} else {
+					sendingMsgs = append(sendingMsgs, msg)
+				}
+			}
+
+		// sending msg only when needed
+		case nsendc <- smsg:
+			sendingMsgs = sendingMsgs[1:]
+
+		// forwarding msg only when needed
+		case forwardc <- fmsg:
+			forwardingMsgs = forwardingMsgs[1:]
+		}
+	}
+}

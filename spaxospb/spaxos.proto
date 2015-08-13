@@ -28,8 +28,11 @@ enum MessageType {
     MsgMajorReject      = 11;
     MsgCliProp          = 12;
     MsgMCliProp         = 13;
-    MsgInsRebuild       = 14;
-    MsgChosen           = 15;
+
+    MsgInsRebuild       = 20;
+    MsgInsRebuildResp   = 21;
+
+    MsgChosen           = 30;
 
     MsgInvalid          = 0xFF;
 }

@@ -108,7 +108,8 @@ func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 }
 
 // proposer
-func (ins *spaxosInstance) Propose(sp *spaxos, proposingValue []byte) {
+func (ins *spaxosInstance) Propose(
+	sp *spaxos, proposingValue []byte, asMaster bool) {
 	assert(nil != sp)
 	assert(nil != proposingValue)
 	if false == ins.chosen {

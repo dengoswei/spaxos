@@ -11,7 +11,7 @@ type storePackage struct {
 	outHardStates []pb.HardState
 }
 
-type Storage interface {
+type Storager interface {
 	// store hard state
 	Store([]pb.HardState) error
 
@@ -19,7 +19,7 @@ type Storage interface {
 }
 
 // TODO: fix interface func & name!!!
-type Network interface {
-	Send([]pb.Message) (int, error)
-	Recv() ([]pb.Message, error)
+type Networker interface {
+	GetSendChan() chan pb.Message
+	GetRecvChan() chan pb.Message
 }

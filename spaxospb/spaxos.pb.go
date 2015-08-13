@@ -43,13 +43,14 @@ const (
 	MsgAccptResp MessageType = 5
 	// # TODO
 	// internal msg type : drive
-	MsgTimeOut     MessageType = 10
-	MsgMajorReject MessageType = 11
-	MsgCliProp     MessageType = 12
-	MsgMCliProp    MessageType = 13
-	MsgInsRebuild  MessageType = 14
-	MsgChosen      MessageType = 15
-	MsgInvalid     MessageType = 255
+	MsgTimeOut        MessageType = 10
+	MsgMajorReject    MessageType = 11
+	MsgCliProp        MessageType = 12
+	MsgMCliProp       MessageType = 13
+	MsgInsRebuild     MessageType = 20
+	MsgInsRebuildResp MessageType = 21
+	MsgChosen         MessageType = 30
+	MsgInvalid        MessageType = 255
 )
 
 var MessageType_name = map[int32]string{
@@ -63,24 +64,26 @@ var MessageType_name = map[int32]string{
 	11:  "MsgMajorReject",
 	12:  "MsgCliProp",
 	13:  "MsgMCliProp",
-	14:  "MsgInsRebuild",
-	15:  "MsgChosen",
+	20:  "MsgInsRebuild",
+	21:  "MsgInsRebuildResp",
+	30:  "MsgChosen",
 	255: "MsgInvalid",
 }
 var MessageType_value = map[string]int32{
-	"MsgHup":         0,
-	"MsgBeat":        1,
-	"MsgProp":        2,
-	"MsgPropResp":    3,
-	"MsgAccpt":       4,
-	"MsgAccptResp":   5,
-	"MsgTimeOut":     10,
-	"MsgMajorReject": 11,
-	"MsgCliProp":     12,
-	"MsgMCliProp":    13,
-	"MsgInsRebuild":  14,
-	"MsgChosen":      15,
-	"MsgInvalid":     255,
+	"MsgHup":            0,
+	"MsgBeat":           1,
+	"MsgProp":           2,
+	"MsgPropResp":       3,
+	"MsgAccpt":          4,
+	"MsgAccptResp":      5,
+	"MsgTimeOut":        10,
+	"MsgMajorReject":    11,
+	"MsgCliProp":        12,
+	"MsgMCliProp":       13,
+	"MsgInsRebuild":     20,
+	"MsgInsRebuildResp": 21,
+	"MsgChosen":         30,
+	"MsgInvalid":        255,
 }
 
 func (x MessageType) Enum() *MessageType {
