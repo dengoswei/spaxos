@@ -116,6 +116,7 @@ func (ins *spaxosInstance) Propose(
 		ins.proposingValue = proposingValue
 	}
 
+	// TODO: master propose: skip prepare phase
 	ins.beginPreparePhase(sp)
 }
 
@@ -271,6 +272,25 @@ func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 
 	switch msg.Type {
 	// TODO
+	}
+}
+
+func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(sp.id == msg.To)
+	assert(0 != msg.Index)
+
+	// TODO
+	switch msg.Type {
+	case pb.MsgProp:
+		fallthrough
+	case pb.MsgAccpt:
+		ins.stepAcceptor(sp, msg)
+
+	case pb.MsgPropResp:
+		fallthrough
+	case pb.MsgAccptResp:
+		ins.stepProposer(sp, msg)
 	}
 }
 

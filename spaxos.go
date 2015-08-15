@@ -60,6 +60,26 @@ type spaxos struct {
 	//	prevHSS []pb.HardState
 }
 
+func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
+	assert(0 != id)
+	_, ok := groups[id]
+	assert(true == ok)
+
+	sp := &spaxos{id: id, groups: groups}
+
+	sp.chosenItems = make(map[uint64]pb.HardState)
+	sp.insgroup = make(map[uint64]*spaxosInstance)
+	sp.rebuildList = make(map[uint64][]pb.Message)
+
+	sp.propc = make(chan pb.Message)
+	sp.chosenc = make(chan []pb.HardState)
+	sp.storec = make(chan storePackage)
+	sp.sendc = make(chan []pb.Message)
+	sp.recvc = make(chan pb.Message)
+
+	return sp
+}
+
 //func newSpaxos(
 //	selfid uint64, groupsid []uint64, minIndex, maxIndex uint64) *spaxos {
 //	groups := make(map[uint64]bool)
@@ -89,6 +109,7 @@ type spaxos struct {
 
 func (sp *spaxos) submitChosen(hs pb.HardState) {
 	assert(true == hs.Chosen)
+	assert(nil != sp.chosenItems)
 
 	val, ok := sp.chosenItems[hs.Index]
 	if !ok {
@@ -229,9 +250,61 @@ func (sp *spaxos) getStroagePackage() (chan storePackage, storePackage) {
 }
 
 // State Machine Threaed
+func (sp *spaxos) insertAndCheck(ins *spaxosInstance) {
+	assert(0 != ins.index)
+	_, ok := sp.insgroup[ins.index]
+	assert(false == ok)
+	sp.insgroup[ins.index] = ins
+}
+
 func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
-	// TODO
-	return nil
+	ins, ok := sp.insgroup[index]
+	if ok {
+		assert(nil != ins)
+		return ins
+	}
+
+	assert(nil == ins)
+	if index > sp.maxIndex {
+		// new spaxos instance: cli prop
+		ins = newSpaxosInstance(index)
+		assert(nil != ins)
+		sp.insertAndCheck(ins)
+		return ins
+	} else if index < sp.minIndex {
+		// need rebuild
+		return nil
+	}
+
+	// index >= sp.minIndex && index <= sp.maxIndex
+	// propose by peers: simplely create a one
+	ins = newSpaxosInstance(index)
+	assert(nil != ins)
+	sp.insertAndCheck(ins)
+	return ins
+}
+
+func (sp *spaxos) stepNilSpaxosInstance(msg pb.Message) {
+	// not yet available:
+	// => hand on this msg & gen rebuild msg if not yet gen-ed
+	if pb.MsgInsRebuildResp != msg.Type {
+		sp.handOnMsg(msg)
+		return
+	}
+
+	// rebuild ins
+	ins := rebuildSpaxosInstance(msg.Hs)
+	assert(nil != ins)
+	assert(ins.index == msg.Index)
+	// add ins into insgroups
+	sp.insertAndCheck(ins)
+
+	prevMsgs, ok := sp.rebuildList[ins.index]
+	if ok {
+		for _, prevMsg := range prevMsgs {
+			sp.step(prevMsg)
+		}
+	}
 }
 
 func (sp *spaxos) step(msg pb.Message) {
@@ -241,41 +314,20 @@ func (sp *spaxos) step(msg pb.Message) {
 	// get ins by index
 	ins := sp.getSpaxosInstance(msg.Index)
 	if nil == ins {
-		// not yet available:
-		// => hand on this msg & gen rebuild msg if not yet gen-ed
-		if pb.MsgInsRebuildResp != msg.Type {
-			sp.handOnMsg(msg)
-			return
-		}
-
-		// rebuild ins
-		ins = rebuildSpaxosInstance(msg.Hs)
-		assert(nil != ins)
-		assert(ins.index == msg.Index)
-		// add ins into insgroups
-		// TODO: fix + check
-		sp.insgroup[ins.index] = ins
-
-		prevMsgs, ok := sp.rebuildList[ins.index]
-		if ok {
-			for _, prevMsg := range prevMsgs {
-				sp.step(prevMsg)
-			}
-		}
+		sp.stepNilSpaxosInstance(msg)
+		return
 	}
 
 	switch msg.Type {
 	case pb.MsgCliProp:
 		fallthrough
 	case pb.MsgMCliProp:
-
-	case pb.MsgInsRebuildResp:
-		assert(false)
+		assert(nil != msg.Entry.Value)
+		ins.Propose(sp, msg.Entry.Value, pb.MsgMCliProp == msg.Type)
 
 	default:
-
+		ins.step(sp, msg)
 	}
-
 }
 
 func (sp *spaxos) runStateMachine() {
@@ -301,20 +353,6 @@ func (sp *spaxos) runStateMachine() {
 			assert(nil != propMsg.Entry.Value)
 			propMsg.Index = sp.maxIndex + 1
 			sp.step(propMsg)
-			// TODO
-			// assign a index(max+1) & create a new spaxos instace
-			// deal with propMsg
-			newindex := sp.maxIndex + 1
-			newins := newSpaxosInstance(newindex)
-			assert(nil != newins)
-			assert(newindex == newins.index)
-			sp.maxIndex = newindex
-			_, ok := sp.insgroup[newindex]
-			assert(false == ok)
-			sp.insgroup[newindex] = newins
-
-			newins.Propose(sp,
-				propMsg.Entry.Value, pb.MsgMCliProp == propMsg.Type)
 
 		case msg := <-sp.recvc:
 			assert(0 != msg.Index)
@@ -366,10 +404,25 @@ func (sp *spaxos) runStorage(db Storager) {
 			assert(nil != outHardStates || nil != outMsgs)
 			// store outhardStates first
 
-			err := db.Store(outHardStates)
+			// shrink outHardStates
+			{
+				mapHardStates := make(map[uint64]pb.HardState)
+				for _, hs := range outHardStates {
+					mapHardStates[hs.Index] = hs
+				}
+
+				outHardStates = nil
+				for _, hs := range mapHardStates {
+					outHardStates = append(outHardStates, hs)
+				}
+			}
+
 			dropMsgs := false
-			if nil != err {
-				dropMsgs = true
+			if nil != outHardStates {
+				err := db.Store(outHardStates)
+				if nil != err {
+					dropMsgs = true
+				}
 			}
 
 			// deal with rebuild msg
@@ -412,17 +465,6 @@ func (sp *spaxos) runStorage(db Storager) {
 			sendingMsgs = nil
 		}
 	}
-}
-
-func getMsg(
-	nsendc chan pb.Message,
-	msgs []pb.Message) (chan pb.Message, pb.Message) {
-
-	if nil != msgs {
-		return nsendc, msgs[0]
-	}
-
-	return nil, pb.Message{}
 }
 
 // Network Thread

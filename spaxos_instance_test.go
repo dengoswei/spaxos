@@ -252,6 +252,7 @@ func TestBeginPreparePhase(t *testing.T) {
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
+		assert(nil != sp.chosenItems)
 
 		ins.chosen = true
 		ins.proposingValue = ins.acceptedValue
@@ -331,7 +332,7 @@ func TestPropose(t *testing.T) {
 
 		ins.chosen = false
 		proposingValue := RandByte(100)
-		ins.Propose(sp, proposingValue)
+		ins.Propose(sp, proposingValue, false)
 
 		assert(1 == len(sp.outMsgs))
 		assert(1 == len(sp.outHardStates))
@@ -349,7 +350,7 @@ func TestPropose(t *testing.T) {
 		ins.proposingValue = ins.acceptedValue
 		proposingValue := RandByte(100)
 
-		ins.Propose(sp, proposingValue)
+		ins.Propose(sp, proposingValue, false)
 		assert(0 == len(sp.outMsgs))
 		assert(0 == len(sp.outHardStates))
 		assert(0 != bytes.Compare(proposingValue, ins.proposingValue))
