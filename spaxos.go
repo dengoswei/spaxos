@@ -228,7 +228,7 @@ func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
 		return nil, nil
 	}
 
-	cits := make([]pb.HardState, len(sp.chosenItems))
+	cits := []pb.HardState{}
 	for idx, hs := range sp.chosenItems {
 		assert(idx == hs.Index)
 		assert(true == hs.Chosen)
@@ -240,7 +240,7 @@ func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
 	return sp.chosenc, cits
 }
 
-func (sp *spaxos) getStroagePackage() (chan storePackage, storePackage) {
+func (sp *spaxos) getStorePackage() (chan storePackage, storePackage) {
 	if nil == sp.outMsgs && nil == sp.outHardStates {
 		return nil, storePackage{}
 	}
@@ -270,6 +270,9 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 		ins = newSpaxosInstance(index)
 		assert(nil != ins)
 		sp.insertAndCheck(ins)
+
+		LogDebug("inc sp.maxIndex from %d to %d", sp.maxIndex, index)
+		sp.maxIndex = index
 		return ins
 	} else if index < sp.minIndex {
 		// need rebuild
@@ -346,12 +349,14 @@ func (sp *spaxos) runStateMachine() {
 		chosenc, cits := sp.getChosen()
 
 		// select on sp.storec only when abs needed
-		storec, spkg := sp.getStroagePackage()
+		storec, spkg := sp.getStorePackage()
 
 		select {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
 			propMsg.Index = sp.maxIndex + 1
+			LogDebug("prop index %d valuelen %d",
+				propMsg.Index, len(propMsg.Entry.Value))
 			sp.step(propMsg)
 
 		case msg := <-sp.recvc:

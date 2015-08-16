@@ -82,7 +82,7 @@ func randHardState() pb.HardState {
 		MaxPromisedNum: promisedNum,
 		MaxAcceptedNum: acceptedNum,
 		// TODO: test function stall on RandByte(100)!! ? why
-		AcceptedValue: RandByte(101),
+		AcceptedValue: RandByte(30),
 	}
 
 	return hs
@@ -96,7 +96,7 @@ func randSpaxosInstance() *spaxosInstance {
 	ins.maxProposedNum = RandUint64()
 	ins.promisedNum = RandUint64()
 	ins.acceptedNum = MinUint64(ins.promisedNum, RandUint64())
-	ins.acceptedValue = RandByte(rd.Intn(100))
+	ins.acceptedValue = RandByte(rd.Intn(30))
 	return ins
 }
 
@@ -167,6 +167,15 @@ func randAccptRsp(sp *spaxos, ins *spaxosInstance) pb.Message {
 		Entry: pb.PaxosEntry{
 			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
 	return msg
+}
+
+func randPropValue() (uint64, []byte, []byte, error) {
+	reqid := RandUint64()
+	reqvalue := RandByte(20)
+	propValue := pb.ProposeValue{Reqid: reqid, Value: reqvalue}
+	data, err := (&pb.ProposeItem{
+		Values: []pb.ProposeValue{propValue}}).Marshal()
+	return reqid, reqvalue, data, err
 }
 
 func printIndicate() {

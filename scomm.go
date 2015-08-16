@@ -86,6 +86,8 @@ func (fnet *FakeNetwork) run(sendc chan pb.Message) {
 		dsendc, smsg := getMsg(sendc, fnet.sendingMsgs)
 		drecvc, rmsg := getMsg(fnet.frecvc, fnet.recvingMsgs)
 
+		// TODO
+		// drop if hold too many sendingMsgs or recvingMsgs ?
 		select {
 		// send msg in sendingMsgsQueue to sendc
 		case dsendc <- smsg:
@@ -132,11 +134,12 @@ func (fcenter *FakeNetworkCenter) Get(id uint64) *FakeNetwork {
 
 func (fcenter *FakeNetworkCenter) Run() {
 	sendc := make(chan pb.Message, len(fcenter.fnets))
+
+	// fan in: => sendc
 	for _, fnet := range fcenter.fnets {
 		go fnet.run(sendc)
 	}
 
-	// TODO: maybe
 	for {
 		rmsg := <-sendc
 

@@ -33,3 +33,5 @@
     conflict error."
    => each prop req associate with a communicate chan ? 
 
+
+8. retire <index, spaxos_instace>
