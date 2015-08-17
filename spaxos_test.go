@@ -289,5 +289,60 @@ func TestRunStorage(t *testing.T) {
 func TestRunNetwork(t *testing.T) {
 	printIndicate()
 
-	// TODO
+	sp := randSpaxos()
+	assert(nil != sp)
+
+	fnet := NewFakeNetwork(sp.id)
+	assert(nil != fnet)
+
+	go sp.runNetwork(fnet)
+
+	ins := randSpaxosInstance()
+	assert(nil != ins)
+	{
+		// send msg
+		msg := randPropRsp(sp, ins)
+		msg.To = msg.From
+		msg.From = sp.id
+		sp.sendc <- []pb.Message{msg}
+
+		sendmsg := <-fnet.GetSendChan()
+		assert(sendmsg.Type == msg.Type)
+		assert(sendmsg.Index == msg.Index)
+		assert(sendmsg.From == msg.From)
+		assert(sendmsg.To == msg.To)
+		assert(sendmsg.Reject == msg.Reject)
+		assert(sendmsg.Entry.PropNum == msg.Entry.PropNum)
+	}
+
+	{
+		// forwarding msg
+		hs := randHardState()
+		assert(0 < hs.Index)
+		msg := pb.Message{
+			Type: pb.MsgInsRebuildResp, Hs: hs,
+			To: sp.id, From: sp.id, Index: hs.Index}
+		sp.sendc <- []pb.Message{msg}
+
+		forwardmsg := <-sp.recvc
+		assert(forwardmsg.Type == msg.Type)
+		assert(forwardmsg.Index == msg.Index)
+		assert(forwardmsg.From == msg.From)
+		assert(forwardmsg.To == msg.To)
+		assert(true == HardStateEqual(forwardmsg.Hs, msg.Hs))
+	}
+
+	{
+		msg := randPropRsp(sp, ins)
+		assert(sp.id == msg.To)
+		fnet.GetRecvChan() <- msg
+
+		recvmsg := <-sp.recvc
+		assert(recvmsg.Type == msg.Type)
+		assert(recvmsg.Index == msg.Index)
+		assert(recvmsg.From == msg.From)
+		assert(recvmsg.To == msg.To)
+		assert(recvmsg.Reject == msg.Reject)
+		assert(recvmsg.Entry.PropNum == msg.Entry.PropNum)
+	}
 }

@@ -219,7 +219,7 @@ func (ins *spaxosInstance) stepPrepareRsp(
 	//	println("==>", msg.From, msg.To, len(ins.rspVotes))
 	if val, ok := ins.rspVotes[msg.From]; ok {
 		// inconsist !
-		assert(val == msg.Reject)
+		assert(val == !msg.Reject)
 		return
 	}
 
@@ -253,7 +253,7 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 
 	if val, ok := ins.rspVotes[msg.From]; ok {
 		// inconsist !
-		assert(val == msg.Reject)
+		assert(val == !msg.Reject)
 		return
 	}
 
@@ -282,14 +282,10 @@ func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
 
 	// TODO
 	switch msg.Type {
-	case pb.MsgProp:
-		fallthrough
-	case pb.MsgAccpt:
+	case pb.MsgProp, pb.MsgAccpt:
 		ins.stepAcceptor(sp, msg)
 
-	case pb.MsgPropResp:
-		fallthrough
-	case pb.MsgAccptResp:
+	case pb.MsgPropResp, pb.MsgAccptResp:
 		ins.stepProposer(sp, msg)
 	}
 }

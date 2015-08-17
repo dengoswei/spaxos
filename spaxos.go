@@ -480,10 +480,14 @@ func (sp *spaxos) runNetwork(net Networker) {
 	nrecvc := net.GetRecvChan()
 	for {
 		nsendc, smsg := getMsg(net.GetSendChan(), sendingMsgs)
-		assert(sp.id == smsg.From)
+		if nil != nsendc {
+			assert(sp.id == smsg.From)
+		}
 
 		forwardc, fmsg := getMsg(sp.recvc, forwardingMsgs)
-		assert(sp.id == fmsg.From)
+		if nil != forwardc {
+			assert(sp.id == fmsg.To)
+		}
 
 		select {
 		// collect msg from network recvc
