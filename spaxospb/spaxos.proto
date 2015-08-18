@@ -8,6 +8,7 @@ option (gogoproto.sizer_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_getters_all) = false;
 option (gogoproto.goproto_enum_prefix_all) = false;
+option (gogoproto.equal_all) = true;
 
 
 
@@ -38,30 +39,33 @@ enum MessageType {
 }
 
 message PaxosEntry {
-    optional uint64     propNum     = 1 [(gogoproto.nullable) = false];
-    optional uint64     accptNum    = 2 [(gogoproto.nullable) = false];
-    optional bytes      value       = 3;
+    optional uint64       propNum     = 1 [(gogoproto.nullable) = false];
+    optional uint64       accptNum    = 2 [(gogoproto.nullable) = false];
+    optional ProposeItem  value       = 3;
+    // [(gogoproto.nullable) = false];
 }
 
 
 message Message {
     optional MessageType type       = 1 [(gogoproto.nullable) = false];
-    optional uint64      to         = 2 [(gogoproto.nullable) = false];
-    optional uint64      from       = 3 [(gogoproto.nullable) = false];
-    optional uint64      index      = 4 [(gogoproto.nullable) = false];
-    optional PaxosEntry  entry      = 5 [(gogoproto.nullable) = false];
-    optional bool        reject     = 6 [(gogoproto.nullable) = false];
-
-    optional HardState   hs         = 7 [(gogoproto.nullable) = false];
+    optional uint32      logid      = 2 [(gogoproto.nullable) = false];
+    optional uint64      to         = 3 [(gogoproto.nullable) = false];
+    optional uint64      from       = 4 [(gogoproto.nullable) = false];
+    optional uint64      index      = 5 [(gogoproto.nullable) = false];
+    optional PaxosEntry  entry      = 6 [(gogoproto.nullable) = false];
+    optional bool        reject     = 7 [(gogoproto.nullable) = false];
+    optional HardState   hs         = 8 [(gogoproto.nullable) = false];
 }
 
 message HardState {
     optional bool    chosen          = 1 [(gogoproto.nullable) = false];
-    optional uint64  index           = 2 [(gogoproto.nullable) = false];
-    optional uint64  maxProposedNum  = 3 [(gogoproto.nullable) = false];
-    optional uint64  maxPromisedNum  = 4 [(gogoproto.nullable) = false];
-    optional uint64  maxAcceptedNum  = 5 [(gogoproto.nullable) = false];
-    optional bytes   acceptedValue   = 6;
+    optional uint32  logid           = 2 [(gogoproto.nullable) = false];
+    optional uint64  index           = 3 [(gogoproto.nullable) = false];
+    optional uint64  maxProposedNum  = 4 [(gogoproto.nullable) = false];
+    optional uint64  maxPromisedNum  = 5 [(gogoproto.nullable) = false];
+    optional uint64  maxAcceptedNum  = 6 [(gogoproto.nullable) = false];
+    optional ProposeItem   acceptedValue  = 7;
+    // [(gogoproto.nullable) = false];
 }
 
 

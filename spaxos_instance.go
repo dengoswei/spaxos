@@ -8,11 +8,12 @@ type stepFunc func(sp *spaxos, msg pb.Message)
 
 type spaxosInstance struct {
 	chosen bool
+	logid  uint32
 	index  uint64
 	// proposer
 	maxProposedNum     uint64
 	maxAcceptedHintNum uint64
-	proposingValue     []byte
+	proposingValue     *pb.ProposeItem
 	rspVotes           map[uint64]bool
 	isPromised         bool
 	stepProposer       stepFunc
@@ -20,17 +21,19 @@ type spaxosInstance struct {
 	// acceptor
 	promisedNum   uint64
 	acceptedNum   uint64
-	acceptedValue []byte
+	acceptedValue *pb.ProposeItem
 	// stepAccpt     stepSpaxosFunc
 }
 
-func newSpaxosInstance(index uint64) *spaxosInstance {
-	return &spaxosInstance{index: index}
+func newSpaxosInstance(logid uint32, index uint64) *spaxosInstance {
+	return &spaxosInstance{logid: logid, index: index}
 }
 
 func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 	ins := spaxosInstance{
-		chosen: hs.Chosen, index: hs.Index,
+		chosen:         hs.Chosen,
+		logid:          hs.Logid,
+		index:          hs.Index,
 		maxProposedNum: hs.MaxProposedNum,
 		promisedNum:    hs.MaxPromisedNum,
 		acceptedNum:    hs.MaxAcceptedNum,
@@ -41,6 +44,7 @@ func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 func (ins *spaxosInstance) getHardState() pb.HardState {
 	return pb.HardState{
 		Chosen:         ins.chosen,
+		Logid:          ins.logid,
 		Index:          ins.index,
 		MaxProposedNum: ins.maxProposedNum,
 		MaxPromisedNum: ins.promisedNum,
@@ -49,7 +53,7 @@ func (ins *spaxosInstance) getHardState() pb.HardState {
 }
 
 func getDefaultRspMsg(msg pb.Message) pb.Message {
-	return pb.Message{Reject: false,
+	return pb.Message{Reject: false, Logid: msg.Logid,
 		Index: msg.Index, From: msg.To, To: msg.From,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 }
@@ -63,6 +67,7 @@ func (ins *spaxosInstance) updatePromised(msg pb.Message) pb.Message {
 		return rsp
 	}
 
+	// not nil
 	if nil != ins.acceptedValue {
 		rsp.Entry.AccptNum = ins.acceptedNum
 		rsp.Entry.Value = ins.acceptedValue
@@ -89,6 +94,7 @@ func (ins *spaxosInstance) updateAccepted(msg pb.Message) pb.Message {
 
 func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
+	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 
 	var rsp pb.Message
@@ -109,9 +115,8 @@ func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 
 // proposer
 func (ins *spaxosInstance) Propose(
-	sp *spaxos, proposingValue []byte, asMaster bool) {
+	sp *spaxos, proposingValue *pb.ProposeItem, asMaster bool) {
 	assert(nil != sp)
-	assert(nil != proposingValue)
 	if false == ins.chosen {
 		ins.proposingValue = proposingValue
 	}
@@ -133,8 +138,8 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 		ins.maxProposedNum, ins.promisedNum)
 
 	req := pb.Message{
-		Type: pb.MsgProp, Index: ins.index, From: sp.id,
-		Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
+		Type: pb.MsgProp, Logid: ins.logid, Index: ins.index,
+		From: sp.id, Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
 
 	// optimize: local check first
 	{
@@ -161,7 +166,8 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 
 	ins.isPromised = true
 	req := pb.Message{
-		Type: pb.MsgAccpt, Index: ins.index, From: sp.id,
+		Type: pb.MsgAccpt, Logid: ins.logid,
+		Index: ins.index, From: sp.id,
 		Entry: pb.PaxosEntry{
 			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
 
@@ -197,7 +203,8 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 	ins.stepProposer = ins.stepChosen
 	if broadcast {
 		req := pb.Message{
-			Type: pb.MsgChosen, Index: ins.index, From: sp.id,
+			Type: pb.MsgChosen, Logid: ins.logid,
+			Index: ins.index, From: sp.id,
 			Entry: pb.PaxosEntry{Value: ins.acceptedValue}}
 		sp.appendMsg(req)
 	}
@@ -206,6 +213,7 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 func (ins *spaxosInstance) stepPrepareRsp(
 	sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
+	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 
 	// TODO
@@ -229,7 +237,6 @@ func (ins *spaxosInstance) stepPrepareRsp(
 		if ins.maxAcceptedHintNum < msg.Entry.AccptNum {
 			ins.maxAcceptedHintNum = msg.Entry.AccptNum
 			ins.proposingValue = msg.Entry.Value
-			assert(nil != ins.proposingValue)
 		}
 	}
 
@@ -242,6 +249,7 @@ func (ins *spaxosInstance) stepPrepareRsp(
 
 func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
+	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 
 	// TODO
@@ -267,6 +275,7 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 
 func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
+	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 	assert(true == ins.chosen)
 

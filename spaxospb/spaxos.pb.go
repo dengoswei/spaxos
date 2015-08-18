@@ -26,6 +26,8 @@ import io "io"
 import fmt "fmt"
 import github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
 
+import bytes "bytes"
+
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = math.Inf
@@ -104,10 +106,10 @@ func (x *MessageType) UnmarshalJSON(data []byte) error {
 }
 
 type PaxosEntry struct {
-	PropNum          uint64 `protobuf:"varint,1,opt,name=propNum" json:"propNum"`
-	AccptNum         uint64 `protobuf:"varint,2,opt,name=accptNum" json:"accptNum"`
-	Value            []byte `protobuf:"bytes,3,opt,name=value" json:"value,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
+	PropNum          uint64       `protobuf:"varint,1,opt,name=propNum" json:"propNum"`
+	AccptNum         uint64       `protobuf:"varint,2,opt,name=accptNum" json:"accptNum"`
+	Value            *ProposeItem `protobuf:"bytes,3,opt,name=value" json:"value,omitempty"`
+	XXX_unrecognized []byte       `json:"-"`
 }
 
 func (m *PaxosEntry) Reset()         { *m = PaxosEntry{} }
@@ -116,12 +118,13 @@ func (*PaxosEntry) ProtoMessage()    {}
 
 type Message struct {
 	Type             MessageType `protobuf:"varint,1,opt,name=type,enum=spaxospb.MessageType" json:"type"`
-	To               uint64      `protobuf:"varint,2,opt,name=to" json:"to"`
-	From             uint64      `protobuf:"varint,3,opt,name=from" json:"from"`
-	Index            uint64      `protobuf:"varint,4,opt,name=index" json:"index"`
-	Entry            PaxosEntry  `protobuf:"bytes,5,opt,name=entry" json:"entry"`
-	Reject           bool        `protobuf:"varint,6,opt,name=reject" json:"reject"`
-	Hs               HardState   `protobuf:"bytes,7,opt,name=hs" json:"hs"`
+	Logid            uint32      `protobuf:"varint,2,opt,name=logid" json:"logid"`
+	To               uint64      `protobuf:"varint,3,opt,name=to" json:"to"`
+	From             uint64      `protobuf:"varint,4,opt,name=from" json:"from"`
+	Index            uint64      `protobuf:"varint,5,opt,name=index" json:"index"`
+	Entry            PaxosEntry  `protobuf:"bytes,6,opt,name=entry" json:"entry"`
+	Reject           bool        `protobuf:"varint,7,opt,name=reject" json:"reject"`
+	Hs               HardState   `protobuf:"bytes,8,opt,name=hs" json:"hs"`
 	XXX_unrecognized []byte      `json:"-"`
 }
 
@@ -130,13 +133,14 @@ func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 
 type HardState struct {
-	Chosen           bool   `protobuf:"varint,1,opt,name=chosen" json:"chosen"`
-	Index            uint64 `protobuf:"varint,2,opt,name=index" json:"index"`
-	MaxProposedNum   uint64 `protobuf:"varint,3,opt,name=maxProposedNum" json:"maxProposedNum"`
-	MaxPromisedNum   uint64 `protobuf:"varint,4,opt,name=maxPromisedNum" json:"maxPromisedNum"`
-	MaxAcceptedNum   uint64 `protobuf:"varint,5,opt,name=maxAcceptedNum" json:"maxAcceptedNum"`
-	AcceptedValue    []byte `protobuf:"bytes,6,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
+	Chosen           bool         `protobuf:"varint,1,opt,name=chosen" json:"chosen"`
+	Logid            uint32       `protobuf:"varint,2,opt,name=logid" json:"logid"`
+	Index            uint64       `protobuf:"varint,3,opt,name=index" json:"index"`
+	MaxProposedNum   uint64       `protobuf:"varint,4,opt,name=maxProposedNum" json:"maxProposedNum"`
+	MaxPromisedNum   uint64       `protobuf:"varint,5,opt,name=maxPromisedNum" json:"maxPromisedNum"`
+	MaxAcceptedNum   uint64       `protobuf:"varint,6,opt,name=maxAcceptedNum" json:"maxAcceptedNum"`
+	AcceptedValue    *ProposeItem `protobuf:"bytes,7,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
+	XXX_unrecognized []byte       `json:"-"`
 }
 
 func (m *HardState) Reset()         { *m = HardState{} }
@@ -220,23 +224,28 @@ func (m *PaxosEntry) Unmarshal(data []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
-			var byteLen int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
 				b := data[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + msglen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Value = append([]byte{}, data[iNdEx:postIndex]...)
+			if m.Value == nil {
+				m.Value = &ProposeItem{}
+			}
+			if err := m.Value.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			var sizeOfWire int
@@ -299,6 +308,22 @@ func (m *Message) Unmarshal(data []byte) error {
 			}
 		case 2:
 			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Logid", wireType)
+			}
+			m.Logid = 0
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Logid |= (uint32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
 			}
 			m.To = 0
@@ -313,7 +338,7 @@ func (m *Message) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
 			}
@@ -329,7 +354,7 @@ func (m *Message) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
 			}
@@ -345,7 +370,7 @@ func (m *Message) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Entry", wireType)
 			}
@@ -369,7 +394,7 @@ func (m *Message) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reject", wireType)
 			}
@@ -386,7 +411,7 @@ func (m *Message) Unmarshal(data []byte) error {
 				}
 			}
 			m.Reject = bool(v != 0)
-		case 7:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Hs", wireType)
 			}
@@ -472,6 +497,22 @@ func (m *HardState) Unmarshal(data []byte) error {
 			m.Chosen = bool(v != 0)
 		case 2:
 			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Logid", wireType)
+			}
+			m.Logid = 0
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Logid |= (uint32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
 			}
 			m.Index = 0
@@ -486,7 +527,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxProposedNum", wireType)
 			}
@@ -502,7 +543,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxPromisedNum", wireType)
 			}
@@ -518,7 +559,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxAcceptedNum", wireType)
 			}
@@ -534,27 +575,32 @@ func (m *HardState) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 6:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AcceptedValue", wireType)
 			}
-			var byteLen int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
 				b := data[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + msglen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.AcceptedValue = append([]byte{}, data[iNdEx:postIndex]...)
+			if m.AcceptedValue == nil {
+				m.AcceptedValue = &ProposeItem{}
+			}
+			if err := m.AcceptedValue.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			var sizeOfWire int
@@ -828,7 +874,7 @@ func (m *PaxosEntry) Size() (n int) {
 	n += 1 + sovSpaxos(uint64(m.PropNum))
 	n += 1 + sovSpaxos(uint64(m.AccptNum))
 	if m.Value != nil {
-		l = len(m.Value)
+		l = m.Value.Size()
 		n += 1 + l + sovSpaxos(uint64(l))
 	}
 	if m.XXX_unrecognized != nil {
@@ -841,6 +887,7 @@ func (m *Message) Size() (n int) {
 	var l int
 	_ = l
 	n += 1 + sovSpaxos(uint64(m.Type))
+	n += 1 + sovSpaxos(uint64(m.Logid))
 	n += 1 + sovSpaxos(uint64(m.To))
 	n += 1 + sovSpaxos(uint64(m.From))
 	n += 1 + sovSpaxos(uint64(m.Index))
@@ -859,12 +906,13 @@ func (m *HardState) Size() (n int) {
 	var l int
 	_ = l
 	n += 2
+	n += 1 + sovSpaxos(uint64(m.Logid))
 	n += 1 + sovSpaxos(uint64(m.Index))
 	n += 1 + sovSpaxos(uint64(m.MaxProposedNum))
 	n += 1 + sovSpaxos(uint64(m.MaxPromisedNum))
 	n += 1 + sovSpaxos(uint64(m.MaxAcceptedNum))
 	if m.AcceptedValue != nil {
-		l = len(m.AcceptedValue)
+		l = m.AcceptedValue.Size()
 		n += 1 + l + sovSpaxos(uint64(l))
 	}
 	if m.XXX_unrecognized != nil {
@@ -939,8 +987,12 @@ func (m *PaxosEntry) MarshalTo(data []byte) (n int, err error) {
 	if m.Value != nil {
 		data[i] = 0x1a
 		i++
-		i = encodeVarintSpaxos(data, i, uint64(len(m.Value)))
-		i += copy(data[i:], m.Value)
+		i = encodeVarintSpaxos(data, i, uint64(m.Value.Size()))
+		n1, err := m.Value.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n1
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
@@ -968,22 +1020,25 @@ func (m *Message) MarshalTo(data []byte) (n int, err error) {
 	i = encodeVarintSpaxos(data, i, uint64(m.Type))
 	data[i] = 0x10
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.To))
+	i = encodeVarintSpaxos(data, i, uint64(m.Logid))
 	data[i] = 0x18
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.From))
+	i = encodeVarintSpaxos(data, i, uint64(m.To))
 	data[i] = 0x20
 	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.From))
+	data[i] = 0x28
+	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.Index))
-	data[i] = 0x2a
+	data[i] = 0x32
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.Entry.Size()))
-	n1, err := m.Entry.MarshalTo(data[i:])
+	n2, err := m.Entry.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n1
-	data[i] = 0x30
+	i += n2
+	data[i] = 0x38
 	i++
 	if m.Reject {
 		data[i] = 1
@@ -991,14 +1046,14 @@ func (m *Message) MarshalTo(data []byte) (n int, err error) {
 		data[i] = 0
 	}
 	i++
-	data[i] = 0x3a
+	data[i] = 0x42
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.Hs.Size()))
-	n2, err := m.Hs.MarshalTo(data[i:])
+	n3, err := m.Hs.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n2
+	i += n3
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
 	}
@@ -1030,21 +1085,28 @@ func (m *HardState) MarshalTo(data []byte) (n int, err error) {
 	i++
 	data[i] = 0x10
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Index))
+	i = encodeVarintSpaxos(data, i, uint64(m.Logid))
 	data[i] = 0x18
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.MaxProposedNum))
+	i = encodeVarintSpaxos(data, i, uint64(m.Index))
 	data[i] = 0x20
 	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.MaxPromisedNum))
+	i = encodeVarintSpaxos(data, i, uint64(m.MaxProposedNum))
 	data[i] = 0x28
+	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.MaxPromisedNum))
+	data[i] = 0x30
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.MaxAcceptedNum))
 	if m.AcceptedValue != nil {
-		data[i] = 0x32
+		data[i] = 0x3a
 		i++
-		i = encodeVarintSpaxos(data, i, uint64(len(m.AcceptedValue)))
-		i += copy(data[i:], m.AcceptedValue)
+		i = encodeVarintSpaxos(data, i, uint64(m.AcceptedValue.Size()))
+		n4, err := m.AcceptedValue.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
@@ -1143,4 +1205,197 @@ func encodeVarintSpaxos(data []byte, offset int, v uint64) int {
 	}
 	data[offset] = uint8(v)
 	return offset + 1
+}
+func (this *PaxosEntry) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*PaxosEntry)
+	if !ok {
+		return false
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if this.PropNum != that1.PropNum {
+		return false
+	}
+	if this.AccptNum != that1.AccptNum {
+		return false
+	}
+	if !this.Value.Equal(that1.Value) {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *Message) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*Message)
+	if !ok {
+		return false
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	if this.Logid != that1.Logid {
+		return false
+	}
+	if this.To != that1.To {
+		return false
+	}
+	if this.From != that1.From {
+		return false
+	}
+	if this.Index != that1.Index {
+		return false
+	}
+	if !this.Entry.Equal(&that1.Entry) {
+		return false
+	}
+	if this.Reject != that1.Reject {
+		return false
+	}
+	if !this.Hs.Equal(&that1.Hs) {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *HardState) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*HardState)
+	if !ok {
+		return false
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if this.Chosen != that1.Chosen {
+		return false
+	}
+	if this.Logid != that1.Logid {
+		return false
+	}
+	if this.Index != that1.Index {
+		return false
+	}
+	if this.MaxProposedNum != that1.MaxProposedNum {
+		return false
+	}
+	if this.MaxPromisedNum != that1.MaxPromisedNum {
+		return false
+	}
+	if this.MaxAcceptedNum != that1.MaxAcceptedNum {
+		return false
+	}
+	if !this.AcceptedValue.Equal(that1.AcceptedValue) {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *ProposeValue) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*ProposeValue)
+	if !ok {
+		return false
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if this.Reqid != that1.Reqid {
+		return false
+	}
+	if !bytes.Equal(this.Value, that1.Value) {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *ProposeItem) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*ProposeItem)
+	if !ok {
+		return false
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if !this.Values[i].Equal(&that1.Values[i]) {
+			return false
+		}
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
 }

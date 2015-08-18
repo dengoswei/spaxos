@@ -1,13 +1,14 @@
 package spaxos
 
 import (
-	"bytes"
+	"errors"
 
 	pb "spaxos/spaxospb"
 )
 
 type spaxos struct {
-	// id of myself
+	// id of myself := logid  id
+	logid  uint32
 	id     uint64
 	groups map[uint64]bool
 
@@ -26,8 +27,11 @@ type spaxos struct {
 
 	// communicate channel
 	// attach: smt & db
-	propc   chan pb.Message
-	chosenc chan []pb.HardState
+	propc chan pb.Message
+
+	// TODO:
+	chindexc chan uint64
+	chosenc  chan []pb.HardState
 
 	// attach: smt & st
 	storec chan storePackage
@@ -60,12 +64,12 @@ type spaxos struct {
 	//	prevHSS []pb.HardState
 }
 
-func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
+func NewSpaxos(logid uint32, id uint64, groups map[uint64]bool) *spaxos {
 	assert(0 != id)
 	_, ok := groups[id]
 	assert(true == ok)
 
-	sp := &spaxos{id: id, groups: groups}
+	sp := &spaxos{logid: logid, id: id, groups: groups}
 
 	sp.chosenItems = make(map[uint64]pb.HardState)
 	sp.insgroup = make(map[uint64]*spaxosInstance)
@@ -73,6 +77,9 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 
 	sp.propc = make(chan pb.Message)
 	sp.chosenc = make(chan []pb.HardState)
+
+	// TODO
+
 	sp.storec = make(chan storePackage)
 	sp.sendc = make(chan []pb.Message)
 	sp.recvc = make(chan pb.Message)
@@ -118,9 +125,7 @@ func (sp *spaxos) submitChosen(hs pb.HardState) {
 	}
 
 	// already chosen
-	assert(true == val.Chosen)
-	assert(val.Index == hs.Index)
-	assert(0 == bytes.Compare(val.AcceptedValue, hs.AcceptedValue))
+	assert(true == val.Equal(hs))
 }
 
 func (sp *spaxos) appendMsg(msg pb.Message) {
@@ -177,7 +182,8 @@ func (sp *spaxos) Run() {
 // propValue := pb.ProposeValue{Reqid: reqid, Value: value}
 // propItem := pb.ProposeItem{Values: append([]pb.ProposeValue, propValue)}
 // data, err = propItem.Marshal()
-func (sp *spaxos) Propose(data []byte, asMaster bool) error {
+// func (sp *spaxos) Propose(data []byte, asMaster bool) error {
+func (sp *spaxos) Propose(data map[uint64][]byte, asMaster bool) error {
 	msgType := pb.MsgCliProp
 	if asMaster {
 		// issue a master propose
@@ -185,9 +191,16 @@ func (sp *spaxos) Propose(data []byte, asMaster bool) error {
 	}
 
 	// data: may contain multiple <reqid, value>
+	pitem := &pb.ProposeItem{}
+	for reqid, value := range data {
+		pitem.Values = append(pitem.Values,
+			pb.ProposeValue{Reqid: reqid, Value: value})
+	}
+	assert(len(pitem.Values) == len(data))
+
 	propMsg := pb.Message{
 		Type: msgType, From: sp.id, To: sp.id,
-		Entry: pb.PaxosEntry{Value: data}}
+		Entry: pb.PaxosEntry{Value: pitem}}
 	select {
 	case sp.propc <- propMsg:
 		// TODO: add timeout ?
@@ -206,21 +219,35 @@ func (sp *spaxos) Propose(data []byte, asMaster bool) error {
 //       reqid := propValue.Reqid
 //       value := propValue.Value
 //   }
-func (sp *spaxos) GetChosenValue() map[uint64][]byte {
+func (sp *spaxos) GetChosenValue() []pb.HardState {
 	select {
 	case chosengroup := <-sp.chosenc:
-		items := make(map[uint64][]byte, len(chosengroup))
-		for _, hs := range chosengroup {
-			assert(true == hs.Chosen)
-			assert(uint64(0) < hs.Index)
-			items[hs.Index] = hs.AcceptedValue
-		}
-
-		return items
+		// do not repeat !!!
+		return chosengroup
 		// TODO: add timeout ?
 	}
 
 	return nil
+}
+
+func (sp *spaxos) GetChosenValueAt(index uint64) ([]byte, error) {
+	if 0 == index {
+		return nil, errors.New("INVALID INDEXI")
+	}
+
+	sp.chindexc <- index
+
+	select {
+	// TODO
+	case hs := <-sp.chvaluec:
+		assert(true == hs.Chosen)
+		assert(index == hs.Index)
+		return hs.AcceptedValue, nil
+		// TODO: timeout ?
+	}
+
+	// TODO
+	return nil, nil
 }
 
 func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
@@ -267,7 +294,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 	assert(nil == ins)
 	if index > sp.maxIndex {
 		// new spaxos instance: cli prop
-		ins = newSpaxosInstance(index)
+		ins = newSpaxosInstance(sp.logid, index)
 		assert(nil != ins)
 		sp.insertAndCheck(ins)
 
@@ -281,7 +308,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 
 	// index >= sp.minIndex && index <= sp.maxIndex
 	// propose by peers: simplely create a one
-	ins = newSpaxosInstance(index)
+	ins = newSpaxosInstance(sp.logid, index)
 	assert(nil != ins)
 	sp.insertAndCheck(ins)
 	return ins
