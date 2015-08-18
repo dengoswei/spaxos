@@ -15,7 +15,7 @@ func TestNewPaxos(t *testing.T) {
 	groups[2] = true
 	groups[3] = true
 
-	sp := NewSpaxos(1, groups)
+	sp := NewSpaxos(0, 1, groups)
 	assert(nil != sp)
 	assert(nil != sp.chosenItems)
 	assert(nil != sp.insgroup)
@@ -34,14 +34,14 @@ func TestSubmitChosen(t *testing.T) {
 	assert(nil != sp)
 	assert(0 == len(sp.chosenItems))
 
-	hs := randHardState()
+	hs := randHardState(sp.logid)
 	assert(0 != hs.Index)
 
 	hs.Chosen = true
 	sp.submitChosen(hs)
 	assert(1 == len(sp.chosenItems))
-	assert(true == HardStateEqual(
-		hs, sp.chosenItems[hs.Index]))
+	chs := sp.chosenItems[hs.Index]
+	assert(true == hs.Equal(&chs))
 
 	sp.submitChosen(hs)
 	assert(1 == len(sp.chosenItems))
@@ -63,12 +63,12 @@ func TestAppend(t *testing.T) {
 	assert(msg.Type == outMsg.Type)
 	assert(msg.Index == outMsg.Index)
 
-	hs := randHardState()
+	hs := randHardState(sp.logid)
 	assert(0 != hs.Index)
 	sp.appendHardState(hs)
 	assert(1 == len(sp.outHardStates))
 	outHs := sp.outHardStates[0]
-	assert(true == HardStateEqual(hs, outHs))
+	assert(true == hs.Equal(&outHs))
 }
 
 func TestGenerateRebuildMsg(t *testing.T) {
@@ -135,11 +135,8 @@ func TestSimplePropose(t *testing.T) {
 
 	go sp.runStateMachine()
 
-	reqid, reqvalue, data, err := randPropValue()
-	assert(0 < len(data))
-	assert(nil == err)
-
-	sp.Propose(data, false)
+	reqMap := randPropValue(1)
+	sp.Propose(reqMap, false)
 
 	// wait for
 	spkg := <-sp.storec
@@ -157,7 +154,13 @@ func TestSimplePropose(t *testing.T) {
 		assert(pb.MsgProp == msg.Type)
 		assert(ins.index == msg.Index)
 		assert(ins.promisedNum == ins.maxProposedNum)
-		assert(0 == bytes.Compare(data, ins.proposingValue))
+		assert(1 == len(ins.proposingValue.Values))
+		{
+			v := ins.proposingValue.Values[0]
+			_, ok := reqMap[v.Reqid]
+			assert(true == ok)
+			assert(0 == bytes.Compare(v.Value, reqMap[v.Reqid]))
+		}
 
 		hs := spkg.outHardStates[0]
 		assert(hs.Index == ins.index)
@@ -191,7 +194,7 @@ func TestSimplePropose(t *testing.T) {
 		assert(hs.Index == ins.index)
 		assert(false == hs.Chosen)
 		assert(hs.Index == ins.index)
-		assert(0 == bytes.Compare(hs.AcceptedValue, ins.acceptedValue))
+		assert(true == hs.AcceptedValue.Equal(ins.acceptedValue))
 	}
 
 	// accepted
@@ -222,16 +225,16 @@ func TestSimplePropose(t *testing.T) {
 		assert(ins.maxProposedNum == hs.MaxProposedNum)
 		assert(ins.promisedNum == hs.MaxPromisedNum)
 		assert(ins.acceptedNum == hs.MaxAcceptedNum)
-		assert(0 == bytes.Compare(hs.AcceptedValue, ins.acceptedValue))
+		assert(true == hs.AcceptedValue.Equal(ins.acceptedValue))
 
 		acceptedValue := hs.AcceptedValue
-		assert(0 < len(acceptedValue))
-		propItem := pb.ProposeItem{}
-		err := propItem.Unmarshal(acceptedValue)
-		assert(nil == err)
-		assert(1 == len(propItem.Values))
-		assert(reqid == propItem.Values[0].Reqid)
-		assert(0 == bytes.Compare(propItem.Values[0].Value, reqvalue))
+		assert(1 == len(acceptedValue.Values))
+		{
+			v := acceptedValue.Values[0]
+			_, ok := reqMap[v.Reqid]
+			assert(true == ok)
+			assert(0 == bytes.Compare(v.Value, reqMap[v.Reqid]))
+		}
 	}
 }
 
@@ -247,10 +250,10 @@ func TestRunStorage(t *testing.T) {
 
 	go sp.runStorage(db)
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(sp.logid)
 	assert(nil != ins)
 	ins.chosen = false
-	ins.proposingValue = RandByte(30)
+	ins.proposingValue = randPropItem()
 	{
 		ins.beginPreparePhase(sp)
 		assert(1 == len(sp.outMsgs))
@@ -276,7 +279,7 @@ func TestRunStorage(t *testing.T) {
 		}
 	}
 
-	newhs, err := db.Get(ins.index)
+	newhs, err := db.Get(ins.logid, ins.index)
 	assert(nil == err)
 	assert(ins.index == newhs.Index)
 	{
@@ -297,7 +300,7 @@ func TestRunNetwork(t *testing.T) {
 
 	go sp.runNetwork(fnet)
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(sp.logid)
 	assert(nil != ins)
 	{
 		// send msg
@@ -317,7 +320,7 @@ func TestRunNetwork(t *testing.T) {
 
 	{
 		// forwarding msg
-		hs := randHardState()
+		hs := randHardState(sp.logid)
 		assert(0 < hs.Index)
 		msg := pb.Message{
 			Type: pb.MsgInsRebuildResp, Hs: hs,
@@ -329,7 +332,7 @@ func TestRunNetwork(t *testing.T) {
 		assert(forwardmsg.Index == msg.Index)
 		assert(forwardmsg.From == msg.From)
 		assert(forwardmsg.To == msg.To)
-		assert(true == HardStateEqual(forwardmsg.Hs, msg.Hs))
+		assert(true == forwardmsg.Hs.Equal(&(msg.Hs)))
 	}
 
 	{

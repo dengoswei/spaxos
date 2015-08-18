@@ -1,7 +1,6 @@
 package spaxos
 
 import (
-	"bytes"
 	"math/rand"
 	"testing"
 
@@ -12,7 +11,7 @@ func TestNewSpaxosInstance(t *testing.T) {
 	printIndicate()
 
 	index := uint64(rand.Uint32())
-	ins := newSpaxosInstance(index)
+	ins := newSpaxosInstance(0, index)
 	assert(nil != ins)
 	assert(index == ins.index)
 	assert(false == ins.chosen)
@@ -29,7 +28,7 @@ func TestNewSpaxosInstance(t *testing.T) {
 func TestGetHardState(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(0)
 	assert(nil != ins)
 
 	hs := ins.getHardState()
@@ -38,13 +37,13 @@ func TestGetHardState(t *testing.T) {
 	assert(hs.MaxProposedNum == ins.maxProposedNum)
 	assert(hs.MaxPromisedNum == ins.promisedNum)
 	assert(hs.MaxAcceptedNum == ins.acceptedNum)
-	assert(0 == bytes.Compare(hs.AcceptedValue, ins.acceptedValue))
+	assert(true == hs.AcceptedValue.Equal(ins.acceptedValue))
 }
 
 func TestRebuildSpaxosInstance(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(0)
 	assert(nil != ins)
 
 	hs := ins.getHardState()
@@ -55,14 +54,14 @@ func TestRebuildSpaxosInstance(t *testing.T) {
 	assert(ins.maxProposedNum == newins.maxProposedNum)
 	assert(ins.promisedNum == newins.promisedNum)
 	assert(ins.acceptedNum == newins.acceptedNum)
-	assert(0 == bytes.Compare(ins.acceptedValue, newins.acceptedValue))
+	assert(true == ins.acceptedValue.Equal(newins.acceptedValue))
 }
 
 // test accepted
 func TestUpdatePromised(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(0)
 
 	msg := pb.Message{
 		Type: pb.MsgProp, To: 1, From: 2,
@@ -88,7 +87,7 @@ func TestUpdatePromised(t *testing.T) {
 	assert(false == rsp.Reject)
 	assert(rsp.Entry.PropNum == msg.Entry.PropNum)
 	assert(rsp.Entry.AccptNum == ins.acceptedNum)
-	assert(0 == bytes.Compare(rsp.Entry.Value, ins.acceptedValue))
+	assert(true == rsp.Entry.Value.Equal(ins.acceptedValue))
 	assert(ins.promisedNum == msg.Entry.PropNum)
 
 	// case 3: promised with nil value
@@ -107,9 +106,10 @@ func TestUpdatePromised(t *testing.T) {
 func TestUpdateAccepted(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance()
+	ins := randSpaxosInstance(0)
 
-	propValue := RandByte(100)
+	propValue := randPropItem()
+	assert(nil != propValue)
 
 	msg := pb.Message{
 		Type: pb.MsgAccpt, To: 1, From: 2,
@@ -135,7 +135,7 @@ func TestUpdateAccepted(t *testing.T) {
 	assert(rsp.From == msg.To)
 	assert(rsp.To == msg.From)
 	assert(rsp.Entry.PropNum == msg.Entry.PropNum)
-	assert(0 == bytes.Compare(msg.Entry.Value, ins.acceptedValue))
+	assert(true == msg.Entry.Value.Equal(ins.acceptedValue))
 	assert(ins.promisedNum == msg.Entry.PropNum)
 	assert(ins.acceptedNum == msg.Entry.PropNum)
 }
@@ -145,15 +145,16 @@ func TestStepAcceptor(t *testing.T) {
 
 	// case 1:
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
 
 		ins.chosen = false
-		ins.proposingValue = RandByte(100)
+		ins.proposingValue = randPropItem()
+		assert(nil != ins.proposingValue)
 
-		remoteIns := randSpaxosInstance()
+		remoteIns := randSpaxosInstance(0)
 		remoteIns.index = ins.index
 		assert(nil != remoteIns)
 		var remoteSp *spaxos
@@ -216,13 +217,13 @@ func TestBeginPreparePhase(t *testing.T) {
 
 	// case 1: chosen == false
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
 
 		ins.chosen = false
-		ins.proposingValue = RandByte(100)
+		ins.proposingValue = randPropItem()
 		assert(nil != ins.proposingValue)
 		ins.beginPreparePhase(sp)
 		// check ins stat
@@ -248,7 +249,7 @@ func TestBeginPreparePhase(t *testing.T) {
 
 	// case 2: chosen == true
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -268,7 +269,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 
 	// case 1: chosen item
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -282,13 +283,13 @@ func TestBeginAcceptPhase(t *testing.T) {
 
 	// case 2:
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
 
 		ins.chosen = false
-		ins.proposingValue = RandByte(100)
+		ins.proposingValue = randPropItem()
 		assert(nil != ins.proposingValue)
 		// setting up: proposedNum, promiseNum
 		ins.beginPreparePhase(sp)
@@ -297,7 +298,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 		// check ins stat
 		assert(ins.maxProposedNum == ins.promisedNum)
 		assert(ins.maxProposedNum == ins.acceptedNum)
-		assert(0 == bytes.Compare(ins.proposingValue, ins.acceptedValue))
+		assert(true == ins.proposingValue.Equal(ins.acceptedValue))
 
 		// check msg & hard state
 		assert(2 == len(sp.outMsgs))
@@ -307,8 +308,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 		assert(sp.id == accptMsg.From)
 		assert(0 == accptMsg.To)
 		assert(ins.maxProposedNum == accptMsg.Entry.PropNum)
-		assert(0 == bytes.Compare(
-			ins.proposingValue, accptMsg.Entry.Value))
+		assert(true == ins.proposingValue.Equal(accptMsg.Entry.Value))
 
 		assert(2 == len(sp.outHardStates))
 		hs := sp.outHardStates[1]
@@ -325,35 +325,38 @@ func TestPropose(t *testing.T) {
 
 	// case 1:
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
 
 		ins.chosen = false
-		proposingValue := RandByte(100)
+		proposingValue := randPropItem()
+		assert(nil != proposingValue)
 		ins.Propose(sp, proposingValue, false)
 
 		assert(1 == len(sp.outMsgs))
 		assert(1 == len(sp.outHardStates))
-		assert(0 == bytes.Compare(proposingValue, ins.proposingValue))
+		assert(true == proposingValue.Equal(ins.proposingValue))
 	}
 
 	// case 2:
 	{
-		ins := randSpaxosInstance()
-		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
 
+		ins := randSpaxosInstance(sp.logid)
+		assert(nil != ins)
+
 		ins.chosen = true
 		ins.proposingValue = ins.acceptedValue
-		proposingValue := RandByte(100)
+		proposingValue := randPropItem()
+		assert(nil != proposingValue)
 
 		ins.Propose(sp, proposingValue, false)
 		assert(0 == len(sp.outMsgs))
 		assert(0 == len(sp.outHardStates))
-		assert(0 != bytes.Compare(proposingValue, ins.proposingValue))
+		assert(false == proposingValue.Equal(ins.proposingValue))
 	}
 }
 
@@ -383,7 +386,7 @@ func TestMarkChosen(t *testing.T) {
 
 	// case 1
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -397,7 +400,7 @@ func TestMarkChosen(t *testing.T) {
 
 	// case 2
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -414,7 +417,7 @@ func TestMarkChosen(t *testing.T) {
 		assert(sp.id == chosenMsg.From)
 		assert(0 == chosenMsg.To)
 		assert(nil != chosenMsg.Entry.Value)
-		assert(0 == bytes.Compare(ins.acceptedValue, chosenMsg.Entry.Value))
+		assert(true == ins.acceptedValue.Equal(chosenMsg.Entry.Value))
 	}
 }
 
@@ -466,7 +469,7 @@ func helpMajorRejected(sp *spaxos, ins *spaxosInstance) {
 func TestStepPrepareRsp(t *testing.T) {
 	// case 1
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -482,7 +485,7 @@ func TestStepPrepareRsp(t *testing.T) {
 		assert(sp.id == accptMsg.From)
 		assert(0 == accptMsg.To)
 		assert(ins.maxProposedNum == accptMsg.Entry.PropNum)
-		assert(0 == bytes.Compare(ins.proposingValue, accptMsg.Entry.Value))
+		assert(ins.proposingValue.Equal(accptMsg.Entry.Value))
 
 		hs := sp.outHardStates[0]
 		{
@@ -493,7 +496,7 @@ func TestStepPrepareRsp(t *testing.T) {
 
 	// case 2
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -526,7 +529,7 @@ func TestStepPrepareRsp(t *testing.T) {
 func TestStepAcceptRsp(t *testing.T) {
 	// case 1: succ chosen
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -553,12 +556,12 @@ func TestStepAcceptRsp(t *testing.T) {
 		assert(sp.id == chosenMsg.From)
 		assert(0 == chosenMsg.To)
 		assert(nil != chosenMsg.Entry.Value)
-		assert(0 == bytes.Compare(ins.acceptedValue, chosenMsg.Entry.Value))
+		assert(ins.acceptedValue.Equal(chosenMsg.Entry.Value))
 	}
 
 	// case 2: fail to chosen
 	{
-		ins := randSpaxosInstance()
+		ins := randSpaxosInstance(0)
 		assert(nil != ins)
 
 		sp := randSpaxos()

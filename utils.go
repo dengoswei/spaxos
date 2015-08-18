@@ -1,7 +1,6 @@
 package spaxos
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/op/go-logging"
 	"math/rand"
@@ -72,31 +71,39 @@ func RandByte(n int) []byte {
 	return []byte(RandString(n))
 }
 
-func randHardState() pb.HardState {
+func randPropItem() *pb.ProposeItem {
+	pitem := &pb.ProposeItem{
+		Values: []pb.ProposeValue{
+			pb.ProposeValue{Reqid: RandUint64(), Value: RandByte(3)}}}
+	return pitem
+}
+
+func randHardState(logid uint32) pb.HardState {
 	acceptedNum := RandUint64()
 	promisedNum := acceptedNum + RandUint64()
 	hs := pb.HardState{
 		Chosen:         false,
+		Logid:          logid,
 		Index:          RandUint64(),
 		MaxProposedNum: RandUint64(),
 		MaxPromisedNum: promisedNum,
 		MaxAcceptedNum: acceptedNum,
 		// TODO: test function stall on RandByte(100)!! ? why
-		AcceptedValue: RandByte(30),
+		AcceptedValue: randPropItem(),
 	}
 
 	return hs
 }
 
-func randSpaxosInstance() *spaxosInstance {
+func randSpaxosInstance(logid uint32) *spaxosInstance {
 	index := RandUint64()
-	ins := newSpaxosInstance(index)
+	ins := newSpaxosInstance(logid, index)
 
 	ins.chosen = RandBool()
 	ins.maxProposedNum = RandUint64()
 	ins.promisedNum = RandUint64()
 	ins.acceptedNum = MinUint64(ins.promisedNum, RandUint64())
-	ins.acceptedValue = RandByte(rd.Intn(30))
+	ins.acceptedValue = randPropItem()
 	return ins
 }
 
@@ -108,7 +115,7 @@ func randSpaxos() *spaxos {
 		groups[idx] = true
 	}
 
-	return NewSpaxos(id, groups)
+	return NewSpaxos(0, id, groups)
 }
 
 func randRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
@@ -169,13 +176,15 @@ func randAccptRsp(sp *spaxos, ins *spaxosInstance) pb.Message {
 	return msg
 }
 
-func randPropValue() (uint64, []byte, []byte, error) {
-	reqid := RandUint64()
-	reqvalue := RandByte(20)
-	propValue := pb.ProposeValue{Reqid: reqid, Value: reqvalue}
-	data, err := (&pb.ProposeItem{
-		Values: []pb.ProposeValue{propValue}}).Marshal()
-	return reqid, reqvalue, data, err
+func randPropValue(cnt int) map[uint64][]byte {
+	m := make(map[uint64][]byte)
+	for i := 0; i < cnt; i += 1 {
+		reqid := RandUint64()
+		reqvalue := RandByte(3)
+		m[reqid] = reqvalue
+	}
+
+	return m
 }
 
 func printIndicate() {
@@ -195,16 +204,7 @@ func (ins *spaxosInstance) Equal(insB *spaxosInstance) bool {
 		ins.maxProposedNum == insB.maxProposedNum &&
 		ins.promisedNum == insB.promisedNum &&
 		ins.acceptedNum == insB.acceptedNum &&
-		0 == bytes.Compare(ins.acceptedValue, insB.acceptedValue)
-}
-
-func HardStateEqual(hsa, hsb pb.HardState) bool {
-	return hsa.Chosen == hsb.Chosen &&
-		hsa.Index == hsb.Index &&
-		hsa.MaxProposedNum == hsb.MaxProposedNum &&
-		hsa.MaxPromisedNum == hsb.MaxPromisedNum &&
-		hsa.MaxAcceptedNum == hsb.MaxAcceptedNum &&
-		0 == bytes.Compare(hsa.AcceptedValue, hsb.AcceptedValue)
+		true == ins.acceptedValue.Equal(insB.acceptedValue)
 }
 
 func getMsg(
@@ -216,4 +216,17 @@ func getMsg(
 	}
 
 	return nil, pb.Message{}
+}
+
+func printHardState(hs pb.HardState) {
+	println(hs.Chosen, hs.Logid, hs.Index, hs.MaxProposedNum, hs.MaxPromisedNum, hs.MaxAcceptedNum)
+}
+
+func printPropItem(pitem *pb.ProposeItem) {
+	if nil == pitem {
+		println("nil")
+		return
+	}
+
+	println(len(pitem.Values), pitem.Values[0].Reqid, len(pitem.Values[0].Value))
 }

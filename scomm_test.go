@@ -78,13 +78,14 @@ func TestFakeStorage(t *testing.T) {
 	assert(nil != store)
 	assert(nil != store.table)
 
-	hs := randHardState()
+	hs := randHardState(0)
 	assert(0 != hs.Index)
 
 	err := store.Store([]pb.HardState{hs})
 	assert(nil == err)
 
-	newhs, err := store.Get(hs.Index)
+	newhs, err := store.Get(hs.Logid, hs.Index)
 	assert(nil == err)
-	assert(true == HardStateEqual(hs, newhs))
+	assert(true == hs.AcceptedValue.Equal(newhs.AcceptedValue))
+	assert(true == hs.Equal(&newhs))
 }

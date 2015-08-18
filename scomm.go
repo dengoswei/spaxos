@@ -17,7 +17,7 @@ type Storager interface {
 	// store hard state
 	Store([]pb.HardState) error
 
-	Get(index uint64) (pb.HardState, error)
+	Get(logid uint32, index uint64) (pb.HardState, error)
 }
 
 // TODO: fix interface func & name!!!
@@ -27,27 +27,33 @@ type Networker interface {
 }
 
 type FakeStorage struct {
-	table map[uint64]pb.HardState
+	table map[uint32]map[uint64]pb.HardState
 }
 
 func NewFakeStorage() *FakeStorage {
-	store := &FakeStorage{table: make(map[uint64]pb.HardState)}
+	store := &FakeStorage{table: make(map[uint32]map[uint64]pb.HardState)}
 	return store
 }
 
 func (store *FakeStorage) Store(hss []pb.HardState) error {
 	for _, hs := range hss {
 		assert(0 < hs.Index)
-		store.table[hs.Index] = hs
+		if nil == store.table[hs.Logid] {
+			store.table[hs.Logid] = make(map[uint64]pb.HardState)
+		}
+		store.table[hs.Logid][hs.Index] = hs
 	}
 	return nil
 }
 
-func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {
+func (store *FakeStorage) Get(logid uint32, index uint64) (pb.HardState, error) {
 	assert(0 < index)
-	if hs, ok := store.table[index]; ok {
-		assert(index == hs.Index)
-		return hs, nil
+	if t, ok := store.table[logid]; ok {
+		if hs, ok := t[index]; ok {
+			assert(hs.Logid == logid)
+			assert(hs.Index == index)
+			return hs, nil
+		}
 	}
 	return pb.HardState{}, errors.New("Not Exist")
 }

@@ -1,7 +1,7 @@
 package spaxos
 
 import (
-	"errors"
+	//	"errors"
 
 	pb "spaxos/spaxospb"
 )
@@ -125,7 +125,7 @@ func (sp *spaxos) submitChosen(hs pb.HardState) {
 	}
 
 	// already chosen
-	assert(true == val.Equal(hs))
+	assert(true == val.Equal(&hs))
 }
 
 func (sp *spaxos) appendMsg(msg pb.Message) {
@@ -230,25 +230,25 @@ func (sp *spaxos) GetChosenValue() []pb.HardState {
 	return nil
 }
 
-func (sp *spaxos) GetChosenValueAt(index uint64) ([]byte, error) {
-	if 0 == index {
-		return nil, errors.New("INVALID INDEXI")
-	}
-
-	sp.chindexc <- index
-
-	select {
-	// TODO
-	case hs := <-sp.chvaluec:
-		assert(true == hs.Chosen)
-		assert(index == hs.Index)
-		return hs.AcceptedValue, nil
-		// TODO: timeout ?
-	}
-
-	// TODO
-	return nil, nil
-}
+//func (sp *spaxos) GetChosenValueAt(index uint64) ([]byte, error) {
+//	if 0 == index {
+//		return nil, errors.New("INVALID INDEXI")
+//	}
+//
+//	sp.chindexc <- index
+//
+//	select {
+//	// TODO
+//	case hs := <-sp.chvaluec:
+//		assert(true == hs.Chosen)
+//		assert(index == hs.Index)
+//		return hs.AcceptedValue, nil
+//		// TODO: timeout ?
+//	}
+//
+//	// TODO
+//	return nil, nil
+//}
 
 func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
 	if 0 == len(sp.chosenItems) {
@@ -382,8 +382,10 @@ func (sp *spaxos) runStateMachine() {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
 			propMsg.Index = sp.maxIndex + 1
-			LogDebug("prop index %d valuelen %d",
-				propMsg.Index, len(propMsg.Entry.Value))
+			LogDebug("prop index %d propitem cnt %d firstitem len %d",
+				propMsg.Index,
+				len(propMsg.Entry.Value.Values),
+				len(propMsg.Entry.Value.Values[0].Value))
 			sp.step(propMsg)
 
 		case msg := <-sp.recvc:
@@ -473,7 +475,7 @@ func (sp *spaxos) runStorage(db Storager) {
 						Reject: false,
 					}
 
-					hs, err := db.Get(msg.Index)
+					hs, err := db.Get(msg.Logid, msg.Index)
 					if nil != err {
 						rspMsg.Reject = true
 					} else {
