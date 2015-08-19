@@ -11,7 +11,7 @@ func TestNewSpaxosInstance(t *testing.T) {
 	printIndicate()
 
 	index := uint64(rand.Uint32())
-	ins := newSpaxosInstance(0, index)
+	ins := newSpaxosInstance(index)
 	assert(nil != ins)
 	assert(index == ins.index)
 	assert(false == ins.chosen)
@@ -28,7 +28,7 @@ func TestNewSpaxosInstance(t *testing.T) {
 func TestGetHardState(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance(0)
+	ins := randSpaxosInstance()
 	assert(nil != ins)
 
 	hs := ins.getHardState()
@@ -43,7 +43,7 @@ func TestGetHardState(t *testing.T) {
 func TestRebuildSpaxosInstance(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance(0)
+	ins := randSpaxosInstance()
 	assert(nil != ins)
 
 	hs := ins.getHardState()
@@ -61,7 +61,7 @@ func TestRebuildSpaxosInstance(t *testing.T) {
 func TestUpdatePromised(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance(0)
+	ins := randSpaxosInstance()
 
 	msg := pb.Message{
 		Type: pb.MsgProp, To: 1, From: 2,
@@ -106,7 +106,7 @@ func TestUpdatePromised(t *testing.T) {
 func TestUpdateAccepted(t *testing.T) {
 	printIndicate()
 
-	ins := randSpaxosInstance(0)
+	ins := randSpaxosInstance()
 
 	propValue := randPropItem()
 	assert(nil != propValue)
@@ -145,7 +145,7 @@ func TestStepAcceptor(t *testing.T) {
 
 	// case 1:
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -154,7 +154,7 @@ func TestStepAcceptor(t *testing.T) {
 		ins.proposingValue = randPropItem()
 		assert(nil != ins.proposingValue)
 
-		remoteIns := randSpaxosInstance(0)
+		remoteIns := randSpaxosInstance()
 		remoteIns.index = ins.index
 		assert(nil != remoteIns)
 		var remoteSp *spaxos
@@ -217,7 +217,7 @@ func TestBeginPreparePhase(t *testing.T) {
 
 	// case 1: chosen == false
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -249,7 +249,7 @@ func TestBeginPreparePhase(t *testing.T) {
 
 	// case 2: chosen == true
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -269,7 +269,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 
 	// case 1: chosen item
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -283,7 +283,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 
 	// case 2:
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -325,7 +325,7 @@ func TestPropose(t *testing.T) {
 
 	// case 1:
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -345,7 +345,7 @@ func TestPropose(t *testing.T) {
 		sp := randSpaxos()
 		assert(nil != sp)
 
-		ins := randSpaxosInstance(sp.logid)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 
 		ins.chosen = true
@@ -386,7 +386,7 @@ func TestMarkChosen(t *testing.T) {
 
 	// case 1
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -400,7 +400,7 @@ func TestMarkChosen(t *testing.T) {
 
 	// case 2
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
@@ -469,7 +469,7 @@ func helpMajorRejected(sp *spaxos, ins *spaxosInstance) {
 func TestStepPrepareRsp(t *testing.T) {
 	// case 1
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -496,7 +496,7 @@ func TestStepPrepareRsp(t *testing.T) {
 
 	// case 2
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -529,7 +529,7 @@ func TestStepPrepareRsp(t *testing.T) {
 func TestStepAcceptRsp(t *testing.T) {
 	// case 1: succ chosen
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 
 		sp := randSpaxos()
@@ -561,7 +561,7 @@ func TestStepAcceptRsp(t *testing.T) {
 
 	// case 2: fail to chosen
 	{
-		ins := randSpaxosInstance(0)
+		ins := randSpaxosInstance()
 		assert(nil != ins)
 
 		sp := randSpaxos()

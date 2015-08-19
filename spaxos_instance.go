@@ -8,8 +8,8 @@ type stepFunc func(sp *spaxos, msg pb.Message)
 
 type spaxosInstance struct {
 	chosen bool
-	logid  uint32
 	index  uint64
+
 	// proposer
 	maxProposedNum     uint64
 	maxAcceptedHintNum uint64
@@ -23,16 +23,18 @@ type spaxosInstance struct {
 	acceptedNum   uint64
 	acceptedValue *pb.ProposeItem
 	// stepAccpt     stepSpaxosFunc
+
+	// last active time stamp
+	timeoutAt uint64
 }
 
-func newSpaxosInstance(logid uint32, index uint64) *spaxosInstance {
-	return &spaxosInstance{logid: logid, index: index}
+func newSpaxosInstance(index uint64) *spaxosInstance {
+	return &spaxosInstance{index: index}
 }
 
 func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 	ins := spaxosInstance{
 		chosen:         hs.Chosen,
-		logid:          hs.Logid,
 		index:          hs.Index,
 		maxProposedNum: hs.MaxProposedNum,
 		promisedNum:    hs.MaxPromisedNum,
@@ -44,7 +46,6 @@ func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 func (ins *spaxosInstance) getHardState() pb.HardState {
 	return pb.HardState{
 		Chosen:         ins.chosen,
-		Logid:          ins.logid,
 		Index:          ins.index,
 		MaxProposedNum: ins.maxProposedNum,
 		MaxPromisedNum: ins.promisedNum,
@@ -53,7 +54,7 @@ func (ins *spaxosInstance) getHardState() pb.HardState {
 }
 
 func getDefaultRspMsg(msg pb.Message) pb.Message {
-	return pb.Message{Reject: false, Logid: msg.Logid,
+	return pb.Message{Reject: false,
 		Index: msg.Index, From: msg.To, To: msg.From,
 		Entry: pb.PaxosEntry{PropNum: msg.Entry.PropNum}}
 }
@@ -94,7 +95,6 @@ func (ins *spaxosInstance) updateAccepted(msg pb.Message) pb.Message {
 
 func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
-	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 
 	var rsp pb.Message
@@ -138,7 +138,7 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 		ins.maxProposedNum, ins.promisedNum)
 
 	req := pb.Message{
-		Type: pb.MsgProp, Logid: ins.logid, Index: ins.index,
+		Type: pb.MsgProp, Index: ins.index,
 		From: sp.id, Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
 
 	// optimize: local check first
@@ -166,7 +166,7 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 
 	ins.isPromised = true
 	req := pb.Message{
-		Type: pb.MsgAccpt, Logid: ins.logid,
+		Type:  pb.MsgAccpt,
 		Index: ins.index, From: sp.id,
 		Entry: pb.PaxosEntry{
 			PropNum: ins.maxProposedNum, Value: ins.proposingValue}}
@@ -203,7 +203,7 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 	ins.stepProposer = ins.stepChosen
 	if broadcast {
 		req := pb.Message{
-			Type: pb.MsgChosen, Logid: ins.logid,
+			Type:  pb.MsgChosen,
 			Index: ins.index, From: sp.id,
 			Entry: pb.PaxosEntry{Value: ins.acceptedValue}}
 		sp.appendMsg(req)
@@ -213,10 +213,13 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 func (ins *spaxosInstance) stepPrepareRsp(
 	sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
-	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
+	if pb.MsgTimeOut == msg.Type {
+		// timeout happen: act as if reject by major ?
+		ins.beginPreparePhase(sp)
+		return
+	}
 
-	// TODO
 	// only deal with MsgPropResp msg;
 	// println("=>", pb.MsgPropResp, msg.Type, ins.maxProposedNum, msg.Entry.PropNum)
 	if pb.MsgPropResp != msg.Type ||
@@ -249,8 +252,12 @@ func (ins *spaxosInstance) stepPrepareRsp(
 
 func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
-	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
+	if pb.MsgTimeOut == msg.Type {
+		// timeout happen: redo beginAccepted ?
+		ins.beginAcceptPhase(sp)
+		return
+	}
 
 	// TODO
 	// only deal with MsgAccptResp msg;
@@ -275,7 +282,6 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 
 func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
-	assert(ins.logid == msg.Logid)
 	assert(ins.index == msg.Index)
 	assert(true == ins.chosen)
 
@@ -288,15 +294,25 @@ func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
 	assert(sp.id == msg.To)
 	assert(0 != msg.Index)
+	if pb.MsgTimeOut == msg.Type &&
+		ins.timeoutAt > msg.Timestamp {
+		// timeout isn't valid anymore
+		return
+	}
 
-	// TODO
 	switch msg.Type {
 	case pb.MsgProp, pb.MsgAccpt:
+		// step Acceptor don't need to deal with timeout msg
 		ins.stepAcceptor(sp, msg)
 
-	case pb.MsgPropResp, pb.MsgAccptResp:
+	case pb.MsgPropResp, pb.MsgAccptResp, pb.MsgTimeOut:
 		ins.stepProposer(sp, msg)
 	}
+
+	prevTimeout := ins.timeoutAt
+	sp.updateTimeout(ins)
+	// may update
+	assert(prevTimeout <= ins.timeoutAt)
 }
 
 func promisedByMajority(sp *spaxos, rspVotes map[uint64]bool) bool {

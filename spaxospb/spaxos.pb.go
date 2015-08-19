@@ -118,13 +118,13 @@ func (*PaxosEntry) ProtoMessage()    {}
 
 type Message struct {
 	Type             MessageType `protobuf:"varint,1,opt,name=type,enum=spaxospb.MessageType" json:"type"`
-	Logid            uint32      `protobuf:"varint,2,opt,name=logid" json:"logid"`
 	To               uint64      `protobuf:"varint,3,opt,name=to" json:"to"`
 	From             uint64      `protobuf:"varint,4,opt,name=from" json:"from"`
 	Index            uint64      `protobuf:"varint,5,opt,name=index" json:"index"`
 	Entry            PaxosEntry  `protobuf:"bytes,6,opt,name=entry" json:"entry"`
 	Reject           bool        `protobuf:"varint,7,opt,name=reject" json:"reject"`
 	Hs               HardState   `protobuf:"bytes,8,opt,name=hs" json:"hs"`
+	Timestamp        uint64      `protobuf:"varint,9,opt,name=timestamp" json:"timestamp"`
 	XXX_unrecognized []byte      `json:"-"`
 }
 
@@ -134,7 +134,6 @@ func (*Message) ProtoMessage()    {}
 
 type HardState struct {
 	Chosen           bool         `protobuf:"varint,1,opt,name=chosen" json:"chosen"`
-	Logid            uint32       `protobuf:"varint,2,opt,name=logid" json:"logid"`
 	Index            uint64       `protobuf:"varint,3,opt,name=index" json:"index"`
 	MaxProposedNum   uint64       `protobuf:"varint,4,opt,name=maxProposedNum" json:"maxProposedNum"`
 	MaxPromisedNum   uint64       `protobuf:"varint,5,opt,name=maxPromisedNum" json:"maxPromisedNum"`
@@ -306,22 +305,6 @@ func (m *Message) Unmarshal(data []byte) error {
 					break
 				}
 			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Logid", wireType)
-			}
-			m.Logid = 0
-			for shift := uint(0); ; shift += 7 {
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Logid |= (uint32(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
@@ -435,6 +418,22 @@ func (m *Message) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			m.Timestamp = 0
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Timestamp |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			var sizeOfWire int
 			for {
@@ -495,22 +494,6 @@ func (m *HardState) Unmarshal(data []byte) error {
 				}
 			}
 			m.Chosen = bool(v != 0)
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Logid", wireType)
-			}
-			m.Logid = 0
-			for shift := uint(0); ; shift += 7 {
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Logid |= (uint32(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
@@ -887,7 +870,6 @@ func (m *Message) Size() (n int) {
 	var l int
 	_ = l
 	n += 1 + sovSpaxos(uint64(m.Type))
-	n += 1 + sovSpaxos(uint64(m.Logid))
 	n += 1 + sovSpaxos(uint64(m.To))
 	n += 1 + sovSpaxos(uint64(m.From))
 	n += 1 + sovSpaxos(uint64(m.Index))
@@ -896,6 +878,7 @@ func (m *Message) Size() (n int) {
 	n += 2
 	l = m.Hs.Size()
 	n += 1 + l + sovSpaxos(uint64(l))
+	n += 1 + sovSpaxos(uint64(m.Timestamp))
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -906,7 +889,6 @@ func (m *HardState) Size() (n int) {
 	var l int
 	_ = l
 	n += 2
-	n += 1 + sovSpaxos(uint64(m.Logid))
 	n += 1 + sovSpaxos(uint64(m.Index))
 	n += 1 + sovSpaxos(uint64(m.MaxProposedNum))
 	n += 1 + sovSpaxos(uint64(m.MaxPromisedNum))
@@ -1018,9 +1000,6 @@ func (m *Message) MarshalTo(data []byte) (n int, err error) {
 	data[i] = 0x8
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.Type))
-	data[i] = 0x10
-	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Logid))
 	data[i] = 0x18
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.To))
@@ -1054,6 +1033,9 @@ func (m *Message) MarshalTo(data []byte) (n int, err error) {
 		return 0, err
 	}
 	i += n3
+	data[i] = 0x48
+	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.Timestamp))
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
 	}
@@ -1083,9 +1065,6 @@ func (m *HardState) MarshalTo(data []byte) (n int, err error) {
 		data[i] = 0
 	}
 	i++
-	data[i] = 0x10
-	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Logid))
 	data[i] = 0x18
 	i++
 	i = encodeVarintSpaxos(data, i, uint64(m.Index))
@@ -1263,9 +1242,6 @@ func (this *Message) Equal(that interface{}) bool {
 	if this.Type != that1.Type {
 		return false
 	}
-	if this.Logid != that1.Logid {
-		return false
-	}
 	if this.To != that1.To {
 		return false
 	}
@@ -1282,6 +1258,9 @@ func (this *Message) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.Hs.Equal(&that1.Hs) {
+		return false
+	}
+	if this.Timestamp != that1.Timestamp {
 		return false
 	}
 	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
@@ -1310,9 +1289,6 @@ func (this *HardState) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Chosen != that1.Chosen {
-		return false
-	}
-	if this.Logid != that1.Logid {
 		return false
 	}
 	if this.Index != that1.Index {

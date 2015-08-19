@@ -15,7 +15,7 @@ func TestNewPaxos(t *testing.T) {
 	groups[2] = true
 	groups[3] = true
 
-	sp := NewSpaxos(0, 1, groups)
+	sp := NewSpaxos(1, groups)
 	assert(nil != sp)
 	assert(nil != sp.chosenItems)
 	assert(nil != sp.insgroup)
@@ -34,7 +34,7 @@ func TestSubmitChosen(t *testing.T) {
 	assert(nil != sp)
 	assert(0 == len(sp.chosenItems))
 
-	hs := randHardState(sp.logid)
+	hs := randHardState()
 	assert(0 != hs.Index)
 
 	hs.Chosen = true
@@ -63,7 +63,7 @@ func TestAppend(t *testing.T) {
 	assert(msg.Type == outMsg.Type)
 	assert(msg.Index == outMsg.Index)
 
-	hs := randHardState(sp.logid)
+	hs := randHardState()
 	assert(0 != hs.Index)
 	sp.appendHardState(hs)
 	assert(1 == len(sp.outHardStates))
@@ -136,7 +136,7 @@ func TestSimplePropose(t *testing.T) {
 	go sp.runStateMachine()
 
 	reqMap := randPropValue(1)
-	sp.Propose(reqMap, false)
+	sp.multiPropose(reqMap, false)
 
 	// wait for
 	spkg := <-sp.storec
@@ -250,7 +250,7 @@ func TestRunStorage(t *testing.T) {
 
 	go sp.runStorage(db)
 
-	ins := randSpaxosInstance(sp.logid)
+	ins := randSpaxosInstance()
 	assert(nil != ins)
 	ins.chosen = false
 	ins.proposingValue = randPropItem()
@@ -279,7 +279,7 @@ func TestRunStorage(t *testing.T) {
 		}
 	}
 
-	newhs, err := db.Get(ins.logid, ins.index)
+	newhs, err := db.Get(ins.index)
 	assert(nil == err)
 	assert(ins.index == newhs.Index)
 	{
@@ -300,7 +300,7 @@ func TestRunNetwork(t *testing.T) {
 
 	go sp.runNetwork(fnet)
 
-	ins := randSpaxosInstance(sp.logid)
+	ins := randSpaxosInstance()
 	assert(nil != ins)
 	{
 		// send msg
@@ -320,7 +320,7 @@ func TestRunNetwork(t *testing.T) {
 
 	{
 		// forwarding msg
-		hs := randHardState(sp.logid)
+		hs := randHardState()
 		assert(0 < hs.Index)
 		msg := pb.Message{
 			Type: pb.MsgInsRebuildResp, Hs: hs,

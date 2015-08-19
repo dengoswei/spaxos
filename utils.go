@@ -78,12 +78,11 @@ func randPropItem() *pb.ProposeItem {
 	return pitem
 }
 
-func randHardState(logid uint32) pb.HardState {
+func randHardState() pb.HardState {
 	acceptedNum := RandUint64()
 	promisedNum := acceptedNum + RandUint64()
 	hs := pb.HardState{
 		Chosen:         false,
-		Logid:          logid,
 		Index:          RandUint64(),
 		MaxProposedNum: RandUint64(),
 		MaxPromisedNum: promisedNum,
@@ -95,9 +94,9 @@ func randHardState(logid uint32) pb.HardState {
 	return hs
 }
 
-func randSpaxosInstance(logid uint32) *spaxosInstance {
+func randSpaxosInstance() *spaxosInstance {
 	index := RandUint64()
-	ins := newSpaxosInstance(logid, index)
+	ins := newSpaxosInstance(index)
 
 	ins.chosen = RandBool()
 	ins.maxProposedNum = RandUint64()
@@ -115,7 +114,7 @@ func randSpaxos() *spaxos {
 		groups[idx] = true
 	}
 
-	return NewSpaxos(0, id, groups)
+	return NewSpaxos(id, groups)
 }
 
 func randRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
@@ -218,8 +217,13 @@ func getMsg(
 	return nil, pb.Message{}
 }
 
+func generateTimeoutMsg(index, id, timestamp uint64) pb.Message {
+	return pb.Message{Type: pb.MsgTimeOut,
+		To: id, From: id, Index: index, Timestamp: timestamp}
+}
+
 func printHardState(hs pb.HardState) {
-	println(hs.Chosen, hs.Logid, hs.Index, hs.MaxProposedNum, hs.MaxPromisedNum, hs.MaxAcceptedNum)
+	println(hs.Chosen, hs.Index, hs.MaxProposedNum, hs.MaxPromisedNum, hs.MaxAcceptedNum)
 }
 
 func printPropItem(pitem *pb.ProposeItem) {

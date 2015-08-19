@@ -48,18 +48,17 @@ message PaxosEntry {
 
 message Message {
     optional MessageType type       = 1 [(gogoproto.nullable) = false];
-    optional uint32      logid      = 2 [(gogoproto.nullable) = false];
     optional uint64      to         = 3 [(gogoproto.nullable) = false];
     optional uint64      from       = 4 [(gogoproto.nullable) = false];
     optional uint64      index      = 5 [(gogoproto.nullable) = false];
     optional PaxosEntry  entry      = 6 [(gogoproto.nullable) = false];
     optional bool        reject     = 7 [(gogoproto.nullable) = false];
     optional HardState   hs         = 8 [(gogoproto.nullable) = false];
+    optional uint64      timestamp  = 9 [(gogoproto.nullable) = false];
 }
 
 message HardState {
     optional bool    chosen          = 1 [(gogoproto.nullable) = false];
-    optional uint32  logid           = 2 [(gogoproto.nullable) = false];
     optional uint64  index           = 3 [(gogoproto.nullable) = false];
     optional uint64  maxProposedNum  = 4 [(gogoproto.nullable) = false];
     optional uint64  maxPromisedNum  = 5 [(gogoproto.nullable) = false];

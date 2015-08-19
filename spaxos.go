@@ -2,13 +2,12 @@ package spaxos
 
 import (
 	//	"errors"
+	"time"
 
 	pb "spaxos/spaxospb"
 )
 
 type spaxos struct {
-	// id of myself := logid  id
-	logid  uint32
 	id     uint64
 	groups map[uint64]bool
 
@@ -24,6 +23,11 @@ type spaxos struct {
 
 	// rebuild spaxosInstance
 	rebuildList map[uint64][]pb.Message
+
+	// timeout
+	elapsed      uint64
+	timeoutQueue map[uint64]map[uint64]*spaxosInstance
+	tickc        chan struct{}
 
 	// communicate channel
 	// attach: smt & db
@@ -64,12 +68,17 @@ type spaxos struct {
 	//	prevHSS []pb.HardState
 }
 
-func NewSpaxos(logid uint32, id uint64, groups map[uint64]bool) *spaxos {
+func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	assert(0 != id)
 	_, ok := groups[id]
 	assert(true == ok)
 
-	sp := &spaxos{logid: logid, id: id, groups: groups}
+	sp := &spaxos{id: id, groups: groups}
+
+	// timeout
+	sp.timeoutQueue = make(map[uint64]map[uint64]*spaxosInstance)
+	assert(nil != sp.timeoutQueue)
+	sp.tickc = make(chan struct{})
 
 	sp.chosenItems = make(map[uint64]pb.HardState)
 	sp.insgroup = make(map[uint64]*spaxosInstance)
@@ -183,7 +192,7 @@ func (sp *spaxos) Run() {
 // propItem := pb.ProposeItem{Values: append([]pb.ProposeValue, propValue)}
 // data, err = propItem.Marshal()
 // func (sp *spaxos) Propose(data []byte, asMaster bool) error {
-func (sp *spaxos) Propose(data map[uint64][]byte, asMaster bool) error {
+func (sp *spaxos) multiPropose(data map[uint64][]byte, asMaster bool) error {
 	msgType := pb.MsgCliProp
 	if asMaster {
 		// issue a master propose
@@ -209,6 +218,12 @@ func (sp *spaxos) Propose(data map[uint64][]byte, asMaster bool) error {
 	return nil
 }
 
+func (sp *spaxos) propose(reqid uint64, data []byte, asMaster bool) error {
+	reqMap := make(map[uint64][]byte)
+	reqMap[reqid] = data
+	return sp.multiPropose(reqMap, asMaster)
+}
+
 // IMPORTANT:
 // map:
 // - key: index
@@ -228,6 +243,14 @@ func (sp *spaxos) GetChosenValue() []pb.HardState {
 	}
 
 	return nil
+}
+
+func (sp *spaxos) GetChosenValueAt(index uint64, db Storager) (pb.HardState, error) {
+	// for index < db.ChosenIndex
+	// => protocol guarrent: the most recent hs read out of db.Get is chosen paxos instace
+
+	// TODO
+	return pb.HardState{}, nil
 }
 
 //func (sp *spaxos) GetChosenValueAt(index uint64) ([]byte, error) {
@@ -294,7 +317,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 	assert(nil == ins)
 	if index > sp.maxIndex {
 		// new spaxos instance: cli prop
-		ins = newSpaxosInstance(sp.logid, index)
+		ins = newSpaxosInstance(index)
 		assert(nil != ins)
 		sp.insertAndCheck(ins)
 
@@ -308,7 +331,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 
 	// index >= sp.minIndex && index <= sp.maxIndex
 	// propose by peers: simplely create a one
-	ins = newSpaxosInstance(sp.logid, index)
+	ins = newSpaxosInstance(index)
 	assert(nil != ins)
 	sp.insertAndCheck(ins)
 	return ins
@@ -337,6 +360,35 @@ func (sp *spaxos) stepNilSpaxosInstance(msg pb.Message) {
 	}
 }
 
+func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
+	assert(nil != ins)
+	assert(0 < ins.index)
+	// : to avoid live lock
+	//  => may add rand into timeout setting !
+	newTimeout := sp.elapsed + 10 // default 10ms timeout(TODO: fix)
+	if ins.timeoutAt == newTimeout {
+		// no update:
+		return
+	}
+
+	prevTimeout := ins.timeoutAt
+	// delete ins from prevAactive timeout queue
+	if mapTimeout, ok := sp.timeoutQueue[prevTimeout]; ok {
+		if _, ok := mapTimeout[ins.index]; ok {
+			delete(mapTimeout, ins.index)
+		}
+	}
+
+	// add ins into current active timeout queue
+	ins.timeoutAt = newTimeout
+	if _, ok := sp.timeoutQueue[ins.timeoutAt]; !ok {
+		// mapTimeout not yet create
+		sp.timeoutQueue[ins.timeoutAt] = make(map[uint64]*spaxosInstance)
+	}
+	sp.timeoutQueue[ins.timeoutAt][ins.index] = ins
+	assert(0 < len(sp.timeoutQueue[ins.timeoutAt]))
+}
+
 func (sp *spaxos) step(msg pb.Message) {
 	assert(0 != msg.Index)
 	assert(sp.id == msg.To)
@@ -357,6 +409,15 @@ func (sp *spaxos) step(msg pb.Message) {
 
 	default:
 		ins.step(sp, msg)
+	}
+}
+
+func (sp *spaxos) runTick() {
+	for {
+		select {
+		case <-time.After(time.Millisecond * 1):
+			sp.tickc <- struct{}{}
+		}
 	}
 }
 
@@ -406,7 +467,23 @@ func (sp *spaxos) runStateMachine() {
 			// clean up state
 			sp.outMsgs = nil
 			sp.outHardStates = nil
+
+		case <-sp.tickc:
+			sp.elapsed++
+			assert(nil != sp.timeoutQueue)
+			if mapIns, ok := sp.timeoutQueue[sp.elapsed]; ok {
+				for idx, timeoutIns := range mapIns {
+					assert(nil != timeoutIns)
+					assert(idx == timeoutIns.index)
+
+					timeoutMsg := generateTimeoutMsg(idx, sp.id, sp.elapsed)
+					sp.step(timeoutMsg)
+				}
+
+				delete(sp.timeoutQueue, sp.elapsed)
+			}
 		}
+
 	}
 }
 
@@ -475,7 +552,7 @@ func (sp *spaxos) runStorage(db Storager) {
 						Reject: false,
 					}
 
-					hs, err := db.Get(msg.Logid, msg.Index)
+					hs, err := db.Get(msg.Index)
 					if nil != err {
 						rspMsg.Reject = true
 					} else {
