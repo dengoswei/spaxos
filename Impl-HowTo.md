@@ -21,6 +21,13 @@
        <timeout-timestamp, spaxos instance index, spaxos instance>
 
 
+    - spaxos instance retire management:
+      A chosen spaxos instance will put itself into retire queue. 
+      Continuous spaxos instance sequence update the nextMinIndex field in spaxos, which will then be passing into storage thread; once storage thread resp with MsgUpdateMinIndex, all spaxos instance with index below the Msg.Indexk can be safely retire.
+
+
+     - stepChosen:
+       spaxos instance in chosen state will ignore all msg, and response with MsgChosen(non-broadcast);
 
 
 

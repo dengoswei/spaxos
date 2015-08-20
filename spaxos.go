@@ -24,9 +24,6 @@ type spaxos struct {
 	minIndex uint64
 	insgroup map[uint64]*spaxosInstance
 
-	// rebuild spaxosInstance
-	rebuildList map[uint64][]pb.Message
-
 	// signal done
 	done chan struct{}
 	stop chan struct{}
@@ -94,7 +91,7 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	sp.chosenMap = make(map[uint64]bool)
 	//	sp.chosenItems = make(map[uint64]pb.HardState)
 	sp.insgroup = make(map[uint64]*spaxosInstance)
-	sp.rebuildList = make(map[uint64][]pb.Message)
+	//	sp.rebuildList = make(map[uint64][]pb.Message)
 
 	sp.propc = make(chan pb.Message)
 	// sp.chosenc = make(chan []pb.HardState)
@@ -118,33 +115,6 @@ func (sp *spaxos) Stop() {
 	<-sp.done
 }
 
-//func newSpaxos(
-//	selfid uint64, groupsid []uint64, minIndex, maxIndex uint64) *spaxos {
-//	groups := make(map[uint64]bool)
-//	for _, id := range groupsid {
-//		groups[id] = true
-//	}
-//
-//	if _, ok := groups[selfid]; !ok {
-//		// ERROR CASE
-//		return nil
-//	}
-//
-//	sp := &spaxos{
-//		id:        selfid,
-//		groups:    groups,
-//		minIndex:  minIndex,
-//		maxIndex:  maxIndex,
-//		allSps:    make(map[uint64]*spaxosInstance),
-//		mySps:     make(map[uint64]*spaxosInstance),
-//		handOn:    make(map[uint64][]pb.Message),
-//		currState: newSpaxosState()}
-//	//		chosen:   make(map[uint64][]byte)}
-//	assert(nil != sp)
-//	return sp
-//}
-//
-
 func (sp *spaxos) submitChosen(index uint64) {
 	assert(0 < index)
 	assert(nil != sp.chosenMap)
@@ -163,20 +133,6 @@ func (sp *spaxos) submitChosen(index uint64) {
 	}
 }
 
-//func (sp *spaxos) submitChosen(hs pb.HardState) {
-//	assert(true == hs.Chosen)
-//	assert(nil != sp.chosenItems)
-//
-//	val, ok := sp.chosenItems[hs.Index]
-//	if !ok {
-//		sp.chosenItems[hs.Index] = hs
-//		return
-//	}
-//
-//	// already chosen
-//	assert(true == val.Equal(&hs))
-//}
-
 func (sp *spaxos) appendMsg(msg pb.Message) {
 	assert(sp.id == msg.From)
 	sp.outMsgs = append(sp.outMsgs, msg)
@@ -184,20 +140,6 @@ func (sp *spaxos) appendMsg(msg pb.Message) {
 
 func (sp *spaxos) appendHardState(hs pb.HardState) {
 	sp.outHardStates = append(sp.outHardStates, hs)
-}
-
-func (sp *spaxos) generateRebuildMsg(index uint64) pb.Message {
-	return pb.Message{
-		Type: pb.MsgInsRebuild, From: sp.id, To: sp.id, Index: index}
-}
-
-func (sp *spaxos) handOnMsg(msg pb.Message) {
-	if _, ok := sp.rebuildList[msg.Index]; !ok {
-		rebuildMsg := sp.generateRebuildMsg(msg.Index)
-		sp.appendMsg(rebuildMsg)
-	}
-
-	sp.rebuildList[msg.Index] = append(sp.rebuildList[msg.Index], msg)
 }
 
 func (sp *spaxos) getNextProposeNum(prev, hint uint64) uint64 {
@@ -261,72 +203,6 @@ func (sp *spaxos) propose(reqid uint64, value []byte, asMaster bool) error {
 	return sp.multiPropose(reqid, [][]byte{value}, asMaster)
 }
 
-// IMPORTANT:
-// map:
-// - key: index
-// - value:
-//   item := pb.ProposeItem{}
-//   err := item.Unmarshal(value)
-//   for _, propValue := range item.values {
-//       reqid := propValue.Reqid
-//       value := propValue.Value
-//   }
-//func (sp *spaxos) GetChosenValue() []pb.HardState {
-//	select {
-//	case chosengroup := <-sp.chosenc:
-//		// do not repeat !!!
-//		return chosengroup
-//		// TODO: add timeout ?
-//	}
-//
-//	return nil
-//}
-
-func (sp *spaxos) GetChosenValueAt(index uint64, db Storager) (pb.HardState, error) {
-	// for index < db.ChosenIndex
-	// => protocol guarrent: the most recent hs read out of db.Get is chosen paxos instace
-
-	// TODO
-	return pb.HardState{}, nil
-}
-
-//func (sp *spaxos) GetChosenValueAt(index uint64) ([]byte, error) {
-//	if 0 == index {
-//		return nil, errors.New("INVALID INDEXI")
-//	}
-//
-//	sp.chindexc <- index
-//
-//	select {
-//	// TODO
-//	case hs := <-sp.chvaluec:
-//		assert(true == hs.Chosen)
-//		assert(index == hs.Index)
-//		return hs.AcceptedValue, nil
-//		// TODO: timeout ?
-//	}
-//
-//	// TODO
-//	return nil, nil
-//}
-
-//func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
-//	if 0 == len(sp.chosenItems) {
-//		return nil, nil
-//	}
-//
-//	cits := []pb.HardState{}
-//	for idx, hs := range sp.chosenItems {
-//		assert(idx == hs.Index)
-//		assert(true == hs.Chosen)
-//		assert(nil != hs.AcceptedValue)
-//		cits = append(cits, hs)
-//	}
-//
-//	assert(len(sp.chosenItems) == len(cits))
-//	return sp.chosenc, cits
-//}
-
 func (sp *spaxos) getStorePackage() (chan storePackage, storePackage) {
 	if nil == sp.outMsgs && nil == sp.outHardStates {
 		return nil, storePackage{}
@@ -353,6 +229,8 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 	}
 
 	assert(nil == ins)
+	// all spaxos instance in (minIndex, maxIndex] must
+	// already in insgroup, or don't reach this spaxos yet;
 	if index > sp.maxIndex {
 		// new spaxos instance: cli prop
 		ins = newSpaxosInstance(index)
@@ -363,7 +241,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 		sp.maxIndex = index
 		return ins
 	} else if index <= sp.minIndex {
-		// need rebuild
+		// index <= sp.minIndex: indicate it's a chosen spaxos instance
 		return nil
 	}
 
@@ -376,26 +254,19 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 }
 
 func (sp *spaxos) stepNilSpaxosInstance(msg pb.Message) {
-	// not yet available:
-	// => hand on this msg & gen rebuild msg if not yet gen-ed
-	if pb.MsgInsRebuildResp != msg.Type {
-		sp.handOnMsg(msg)
-		return
+	// => stepNilSpaxosInstance: deal with index < sp.minIndex
+	// => which in turn must be chosen spaxos instance
+	assert(msg.Index <= sp.minIndex)
+	assert(0 < msg.Index)
+	if sp.id == msg.From {
+		return // ignore
 	}
 
-	// rebuild ins
-	ins := rebuildSpaxosInstance(msg.Hs)
-	assert(nil != ins)
-	assert(ins.index == msg.Index)
-	// add ins into insgroups
-	sp.insertAndCheck(ins)
-
-	prevMsgs, ok := sp.rebuildList[ins.index]
-	if ok {
-		for _, prevMsg := range prevMsgs {
-			sp.step(prevMsg)
-		}
-	}
+	// readMsg will be process by storage thread
+	readMsg := pb.Message{
+		Type: pb.MsgReadChosen, Index: msg.Index,
+		From: sp.id, To: msg.From}
+	sp.appendMsg(readMsg)
 }
 
 func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
@@ -501,9 +372,6 @@ func (sp *spaxos) runStateMachine() {
 			propc = nil
 		}
 
-		// select on sp.chosenc only when abs needed
-		// chosenc, cits := sp.getChosen()
-
 		// select on sp.storec only when abs needed
 		storec, spkg := sp.getStorePackage()
 
@@ -522,11 +390,6 @@ func (sp *spaxos) runStateMachine() {
 			if sp.id == msg.To {
 				sp.step(msg)
 			}
-
-			//	case chosenc <- cits:
-			//		// success send out the chosen items
-			//		// clean up the chosenItems state
-			//		sp.chosenItems = make(map[uint64]pb.HardState)
 
 		case storec <- spkg:
 			// clean up state
@@ -569,6 +432,7 @@ func (sp *spaxos) generateBroadcastMsgs(msg pb.Message) []pb.Message {
 }
 
 // Storage Thread
+
 func (sp *spaxos) runStorage(db Storager) {
 	assert(nil != db)
 
@@ -615,38 +479,38 @@ func (sp *spaxos) runStorage(db Storager) {
 				}
 			}
 
-			// deal with rebuild msg
 			// generate broad-cast msg if needed
 			for _, msg := range outMsgs {
-				if pb.MsgInsRebuild == msg.Type {
-					assert(0 < msg.Index)
-					assert(sp.id == msg.From)
-					assert(sp.id == msg.To)
-
-					rspMsg := pb.Message{
-						Type:   pb.MsgInsRebuildResp,
-						Index:  msg.Index,
-						From:   sp.id,
-						To:     sp.id,
-						Reject: false,
-					}
-
+				switch msg.Type {
+				case pb.MsgReadChosen:
+					assert(msg.Index <= spkg.minIndex)
 					hs, err := db.Get(msg.Index)
 					if nil != err {
-						rspMsg.Reject = true
-					} else {
-						rspMsg.Hs = hs
+						LogDebug("MsgReadChosen Get %d err %s",
+							msg.Index, err)
+						continue
 					}
 
-					sendingMsgs = append(sendingMsgs, rspMsg)
-				} else if !dropMsgs {
-					if uint64(0) == msg.To {
-						// broadcast but myself
-						bmsgs := sp.generateBroadcastMsgs(msg)
-						sendingMsgs = append(sendingMsgs, bmsgs...)
-					} else {
-						sendingMsgs = append(sendingMsgs, msg)
+					assert(hs.Index == msg.Index)
+					chosenMsg := pb.Message{Type: pb.MsgChosen,
+						Index: msg.Index, From: msg.From, To: msg.To,
+						Entry: pb.PaxosEntry{Value: hs.AcceptedValue}}
+					// reset msg
+					msg = chosenMsg
+				case pb.MsgChosen:
+					// ignore dropMsgs
+				default:
+					if dropMsgs {
+						continue
 					}
+				}
+
+				// msg.To == 0 => indicate a broadcast msg
+				if 0 == msg.To {
+					bmsgs := sp.generateBroadcastMsgs(msg)
+					sendingMsgs = append(sendingMsgs, bmsgs...)
+				} else {
+					sendingMsgs = append(sendingMsgs, msg)
 				}
 			}
 

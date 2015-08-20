@@ -19,7 +19,6 @@ func TestNewPaxos(t *testing.T) {
 	assert(nil != sp)
 	assert(nil != sp.chosenMap)
 	assert(nil != sp.insgroup)
-	assert(nil != sp.rebuildList)
 	assert(nil != sp.done)
 	assert(nil != sp.stop)
 	assert(nil != sp.timeoutQueue)
@@ -76,45 +75,6 @@ func TestAppend(t *testing.T) {
 	assert(1 == len(sp.outHardStates))
 	outHs := sp.outHardStates[0]
 	assert(true == hs.Equal(&outHs))
-}
-
-func TestGenerateRebuildMsg(t *testing.T) {
-	printIndicate()
-
-	sp := randSpaxos()
-	assert(nil != sp)
-
-	index := uint64(10)
-	msg := sp.generateRebuildMsg(index)
-	assert(pb.MsgInsRebuild == msg.Type)
-	assert(index == msg.Index)
-	assert(msg.To == sp.id)
-	assert(msg.From == sp.id)
-}
-
-func TestHandOnMsg(t *testing.T) {
-	printIndicate()
-
-	sp := randSpaxos()
-	assert(nil != sp)
-	assert(0 == len(sp.outMsgs))
-	assert(0 == len(sp.rebuildList))
-
-	msg := pb.Message{
-		Type: pb.MsgProp, Index: 10, To: sp.id}
-	sp.handOnMsg(msg)
-	assert(1 == len(sp.outMsgs))
-	assert(1 == len(sp.rebuildList))
-	assert(1 == len(sp.rebuildList[msg.Index]))
-
-	outMsg := sp.outMsgs[0]
-	assert(pb.MsgInsRebuild == outMsg.Type)
-
-	msg.Type = pb.MsgAccpt
-	sp.handOnMsg(msg)
-	assert(1 == len(sp.outMsgs))
-	assert(1 == len(sp.rebuildList))
-	assert(2 == len(sp.rebuildList[msg.Index]))
 }
 
 func TestGetNextProposeNum(t *testing.T) {
@@ -222,6 +182,9 @@ func TestSimplePropose(t *testing.T) {
 	assert(1 == sp.nextMinIndex)
 	spkg = <-sp.storec
 	assert(1 == spkg.minIndex)
+	println(len(spkg.outMsgs), len(spkg.outHardStates))
+	LogDebug("%+v", spkg.outMsgs[0])
+	LogDebug("%+v", spkg.outMsgs)
 	assert(1 == len(spkg.outMsgs))
 	assert(0 == len(spkg.outHardStates))
 	{
@@ -347,20 +310,7 @@ func TestRunNetwork(t *testing.T) {
 	}
 
 	{
-		// forwarding msg
-		hs := randHardState()
-		assert(0 < hs.Index)
-		msg := pb.Message{
-			Type: pb.MsgInsRebuildResp, Hs: hs,
-			To: sp.id, From: sp.id, Index: hs.Index}
-		sp.sendc <- []pb.Message{msg}
-
-		forwardmsg := <-sp.recvc
-		assert(forwardmsg.Type == msg.Type)
-		assert(forwardmsg.Index == msg.Index)
-		assert(forwardmsg.From == msg.From)
-		assert(forwardmsg.To == msg.To)
-		assert(true == forwardmsg.Hs.Equal(&(msg.Hs)))
+		// (TODO):forwarding msg testcase ?
 	}
 
 	{

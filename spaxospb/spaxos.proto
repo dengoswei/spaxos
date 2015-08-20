@@ -30,9 +30,8 @@ enum MessageType {
     MsgCliProp          = 12;
     MsgMCliProp         = 13;
 
-    MsgInsRebuild       = 20;
-    MsgInsRebuildResp   = 21;
     MsgUpdateMinIndex   = 22;
+    MsgReadChosen       = 23;
 
     MsgChosen           = 30;
 

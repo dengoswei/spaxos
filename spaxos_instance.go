@@ -22,7 +22,6 @@ type spaxosInstance struct {
 	promisedNum   uint64
 	acceptedNum   uint64
 	acceptedValue *pb.ProposeItem
-	// stepAccpt     stepSpaxosFunc
 
 	// last active time stamp
 	timeoutAt uint64
@@ -279,13 +278,22 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	}
 }
 
+// TODO: add stepChosen test-case
 func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
 	assert(ins.index == msg.Index)
 	assert(true == ins.chosen)
-
 	switch msg.Type {
-	// TODO
+	case pb.MsgProp, pb.MsgAccpt:
+		// all msg will be ignore
+		chosenMsg := pb.Message{
+			Type:  pb.MsgChosen,
+			Index: ins.index, From: sp.id, To: msg.From,
+			Entry: pb.PaxosEntry{Value: ins.acceptedValue}}
+		sp.appendMsg(chosenMsg)
+	default:
+		// ignore ?
+		LogDebug("stepChosen msg %v", msg)
 	}
 }
 
