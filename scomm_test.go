@@ -21,7 +21,9 @@ func TestFakeNetwork(t *testing.T) {
 	assert(nil != recvc)
 
 	tsendc := make(chan pb.Message)
-	go fnet.run(tsendc)
+	done := make(chan struct{})
+	go fnet.run(tsendc, done)
+	defer close(done)
 
 	smsg := pb.Message{From: selfid, To: testid}
 	sendc <- smsg
@@ -54,6 +56,7 @@ func TestFakeNetworkCenter(t *testing.T) {
 	}
 
 	go fcenter.Run()
+	defer fcenter.Stop()
 
 	msg := pb.Message{From: 1, To: 2}
 	fnet := fcenter.Get(1)

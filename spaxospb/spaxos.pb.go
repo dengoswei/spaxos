@@ -12,7 +12,6 @@
 		PaxosEntry
 		Message
 		HardState
-		ProposeValue
 		ProposeItem
 */
 package spaxospb
@@ -146,19 +145,10 @@ func (m *HardState) Reset()         { *m = HardState{} }
 func (m *HardState) String() string { return proto.CompactTextString(m) }
 func (*HardState) ProtoMessage()    {}
 
-type ProposeValue struct {
-	Reqid            uint64 `protobuf:"varint,1,req,name=reqid" json:"reqid"`
-	Value            []byte `protobuf:"bytes,2,req,name=value" json:"value,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *ProposeValue) Reset()         { *m = ProposeValue{} }
-func (m *ProposeValue) String() string { return proto.CompactTextString(m) }
-func (*ProposeValue) ProtoMessage()    {}
-
 type ProposeItem struct {
-	Values           []ProposeValue `protobuf:"bytes,1,rep,name=values" json:"values"`
-	XXX_unrecognized []byte         `json:"-"`
+	Reqid            uint64   `protobuf:"varint,1,req,name=reqid" json:"reqid"`
+	Values           [][]byte `protobuf:"bytes,2,rep,name=values" json:"values,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
 }
 
 func (m *ProposeItem) Reset()         { *m = ProposeItem{} }
@@ -609,7 +599,7 @@ func (m *HardState) Unmarshal(data []byte) error {
 
 	return nil
 }
-func (m *ProposeValue) Unmarshal(data []byte) error {
+func (m *ProposeItem) Unmarshal(data []byte) error {
 	var hasFields [1]uint64
 	l := len(data)
 	iNdEx := 0
@@ -648,7 +638,7 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 			hasFields[0] |= uint64(0x00000001)
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -666,9 +656,9 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Value = append([]byte{}, data[iNdEx:postIndex]...)
+			m.Values = append(m.Values, make([]byte, postIndex-iNdEx))
+			copy(m.Values[len(m.Values)-1], data[iNdEx:postIndex])
 			iNdEx = postIndex
-			hasFields[0] |= uint64(0x00000002)
 		default:
 			var sizeOfWire int
 			for {
@@ -692,77 +682,6 @@ func (m *ProposeValue) Unmarshal(data []byte) error {
 	}
 	if hasFields[0]&uint64(0x00000001) == 0 {
 		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("reqid")
-	}
-	if hasFields[0]&uint64(0x00000002) == 0 {
-		return github_com_gogo_protobuf_proto.NewRequiredNotSetError("value")
-	}
-
-	return nil
-}
-func (m *ProposeItem) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Values = append(m.Values, ProposeValue{})
-			if err := m.Values[len(m.Values)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			var sizeOfWire int
-			for {
-				sizeOfWire++
-				wire >>= 7
-				if wire == 0 {
-					break
-				}
-			}
-			iNdEx -= sizeOfWire
-			skippy, err := skipSpaxos(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
 	}
 
 	return nil
@@ -903,26 +822,13 @@ func (m *HardState) Size() (n int) {
 	return n
 }
 
-func (m *ProposeValue) Size() (n int) {
-	var l int
-	_ = l
-	n += 1 + sovSpaxos(uint64(m.Reqid))
-	if m.Value != nil {
-		l = len(m.Value)
-		n += 1 + l + sovSpaxos(uint64(l))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
-	return n
-}
-
 func (m *ProposeItem) Size() (n int) {
 	var l int
 	_ = l
+	n += 1 + sovSpaxos(uint64(m.Reqid))
 	if len(m.Values) > 0 {
-		for _, e := range m.Values {
-			l = e.Size()
+		for _, b := range m.Values {
+			l = len(b)
 			n += 1 + l + sovSpaxos(uint64(l))
 		}
 	}
@@ -1093,38 +999,6 @@ func (m *HardState) MarshalTo(data []byte) (n int, err error) {
 	return i, nil
 }
 
-func (m *ProposeValue) Marshal() (data []byte, err error) {
-	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *ProposeValue) MarshalTo(data []byte) (n int, err error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	data[i] = 0x8
-	i++
-	i = encodeVarintSpaxos(data, i, uint64(m.Reqid))
-	if m.Value == nil {
-		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("value")
-	} else {
-		data[i] = 0x12
-		i++
-		i = encodeVarintSpaxos(data, i, uint64(len(m.Value)))
-		i += copy(data[i:], m.Value)
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
-	}
-	return i, nil
-}
-
 func (m *ProposeItem) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -1140,16 +1014,15 @@ func (m *ProposeItem) MarshalTo(data []byte) (n int, err error) {
 	_ = i
 	var l int
 	_ = l
+	data[i] = 0x8
+	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.Reqid))
 	if len(m.Values) > 0 {
-		for _, msg := range m.Values {
-			data[i] = 0xa
+		for _, b := range m.Values {
+			data[i] = 0x12
 			i++
-			i = encodeVarintSpaxos(data, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(data[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
+			i = encodeVarintSpaxos(data, i, uint64(len(b)))
+			i += copy(data[i:], b)
 		}
 	}
 	if m.XXX_unrecognized != nil {
@@ -1311,37 +1184,6 @@ func (this *HardState) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProposeValue) Equal(that interface{}) bool {
-	if that == nil {
-		if this == nil {
-			return true
-		}
-		return false
-	}
-
-	that1, ok := that.(*ProposeValue)
-	if !ok {
-		return false
-	}
-	if that1 == nil {
-		if this == nil {
-			return true
-		}
-		return false
-	} else if this == nil {
-		return false
-	}
-	if this.Reqid != that1.Reqid {
-		return false
-	}
-	if !bytes.Equal(this.Value, that1.Value) {
-		return false
-	}
-	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
-		return false
-	}
-	return true
-}
 func (this *ProposeItem) Equal(that interface{}) bool {
 	if that == nil {
 		if this == nil {
@@ -1362,11 +1204,14 @@ func (this *ProposeItem) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
+	if this.Reqid != that1.Reqid {
+		return false
+	}
 	if len(this.Values) != len(that1.Values) {
 		return false
 	}
 	for i := range this.Values {
-		if !this.Values[i].Equal(&that1.Values[i]) {
+		if !bytes.Equal(this.Values[i], that1.Values[i]) {
 			return false
 		}
 	}

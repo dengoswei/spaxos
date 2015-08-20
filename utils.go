@@ -73,8 +73,8 @@ func RandByte(n int) []byte {
 
 func randPropItem() *pb.ProposeItem {
 	pitem := &pb.ProposeItem{
-		Values: []pb.ProposeValue{
-			pb.ProposeValue{Reqid: RandUint64(), Value: RandByte(3)}}}
+		Reqid:  RandUint64(),
+		Values: [][]byte{RandByte(10)}}
 	return pitem
 }
 
@@ -175,15 +175,14 @@ func randAccptRsp(sp *spaxos, ins *spaxosInstance) pb.Message {
 	return msg
 }
 
-func randPropValue(cnt int) map[uint64][]byte {
-	m := make(map[uint64][]byte)
-	for i := 0; i < cnt; i += 1 {
-		reqid := RandUint64()
-		reqvalue := RandByte(3)
-		m[reqid] = reqvalue
+func randPropValue(cnt int) (uint64, [][]byte) {
+	reqid := RandUint64()
+	values := make([][]byte, cnt)
+	for i := 0; i < cnt; i++ {
+		values[i] = RandByte(10)
 	}
 
-	return m
+	return reqid, values
 }
 
 func printIndicate() {
@@ -220,17 +219,4 @@ func getMsg(
 func generateTimeoutMsg(index, id, timestamp uint64) pb.Message {
 	return pb.Message{Type: pb.MsgTimeOut,
 		To: id, From: id, Index: index, Timestamp: timestamp}
-}
-
-func printHardState(hs pb.HardState) {
-	println(hs.Chosen, hs.Index, hs.MaxProposedNum, hs.MaxPromisedNum, hs.MaxAcceptedNum)
-}
-
-func printPropItem(pitem *pb.ProposeItem) {
-	if nil == pitem {
-		println("nil")
-		return
-	}
-
-	println(len(pitem.Values), pitem.Values[0].Reqid, len(pitem.Values[0].Value))
 }

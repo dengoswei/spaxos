@@ -67,14 +67,15 @@ message HardState {
     // [(gogoproto.nullable) = false];
 }
 
-
-message ProposeValue {
-    required uint64         reqid    = 1 [(gogoproto.nullable) = false];
-    required bytes          value    = 2;
-}
+//message ProposeValue {
+//    required uint64         reqid    = 1 [(gogoproto.nullable) = false];
+//    required bytes          value    = 2;
+//}
 
 message ProposeItem {
-    repeated ProposeValue   values   = 1 [(gogoproto.nullable) = false];   
+    required uint64  reqid = 1 [(gogoproto.nullable) = false];
+    repeated bytes   values = 2;
+    //repeated ProposeValue   values   = 1 [(gogoproto.nullable) = false];   
 }
 
 

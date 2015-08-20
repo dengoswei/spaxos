@@ -16,7 +16,7 @@ func (slog *SpaxosLog) Propose(
 }
 
 func (slog *SpaxosLog) MultiPropose(
-	data map[uint64][]byte, asMaster bool) error {
+	reqid uint64, values [][]byte, asMaster bool) error {
 
-	return slog.sp.multiPropose(data, asMaster)
+	return slog.sp.multiPropose(reqid, values, asMaster)
 }

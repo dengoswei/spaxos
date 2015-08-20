@@ -14,6 +14,7 @@ type spaxos struct {
 	// current state
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
+	chosenMap     map[uint64]bool
 	chosenItems   map[uint64]pb.HardState
 
 	// index & spaxosInstance
@@ -23,6 +24,10 @@ type spaxos struct {
 
 	// rebuild spaxosInstance
 	rebuildList map[uint64][]pb.Message
+
+	// signal done
+	done chan struct{}
+	stop chan struct{}
 
 	// timeout
 	elapsed      uint64
@@ -75,11 +80,16 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 
 	sp := &spaxos{id: id, groups: groups}
 
+	// signal done
+	sp.done = make(chan struct{})
+	sp.stop = make(chan struct{})
+
 	// timeout
 	sp.timeoutQueue = make(map[uint64]map[uint64]*spaxosInstance)
 	assert(nil != sp.timeoutQueue)
 	sp.tickc = make(chan struct{})
 
+	sp.chosenMap = make(map[uint64]bool)
 	sp.chosenItems = make(map[uint64]pb.HardState)
 	sp.insgroup = make(map[uint64]*spaxosInstance)
 	sp.rebuildList = make(map[uint64][]pb.Message)
@@ -94,6 +104,16 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	sp.recvc = make(chan pb.Message)
 
 	return sp
+}
+
+func (sp *spaxos) Stop() {
+	select {
+	case sp.stop <- struct{}{}:
+	case <-sp.done:
+		return
+	}
+
+	<-sp.done
 }
 
 //func newSpaxos(
@@ -122,6 +142,12 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 //	return sp
 //}
 //
+
+func (sp *spaxos) markChosen(index uint64) {
+	assert(0 < index)
+	assert(nil != sp.chosenMap)
+	sp.chosenMap[index] = true
+}
 
 func (sp *spaxos) submitChosen(hs pb.HardState) {
 	assert(true == hs.Chosen)
@@ -192,7 +218,11 @@ func (sp *spaxos) Run() {
 // propItem := pb.ProposeItem{Values: append([]pb.ProposeValue, propValue)}
 // data, err = propItem.Marshal()
 // func (sp *spaxos) Propose(data []byte, asMaster bool) error {
-func (sp *spaxos) multiPropose(data map[uint64][]byte, asMaster bool) error {
+func (sp *spaxos) multiPropose(
+	reqid uint64, values [][]byte, asMaster bool) error {
+	assert(0 < reqid)
+	assert(0 < len(values))
+
 	msgType := pb.MsgCliProp
 	if asMaster {
 		// issue a master propose
@@ -200,12 +230,7 @@ func (sp *spaxos) multiPropose(data map[uint64][]byte, asMaster bool) error {
 	}
 
 	// data: may contain multiple <reqid, value>
-	pitem := &pb.ProposeItem{}
-	for reqid, value := range data {
-		pitem.Values = append(pitem.Values,
-			pb.ProposeValue{Reqid: reqid, Value: value})
-	}
-	assert(len(pitem.Values) == len(data))
+	pitem := &pb.ProposeItem{Reqid: reqid, Values: values}
 
 	propMsg := pb.Message{
 		Type: msgType, From: sp.id, To: sp.id,
@@ -218,10 +243,8 @@ func (sp *spaxos) multiPropose(data map[uint64][]byte, asMaster bool) error {
 	return nil
 }
 
-func (sp *spaxos) propose(reqid uint64, data []byte, asMaster bool) error {
-	reqMap := make(map[uint64][]byte)
-	reqMap[reqid] = data
-	return sp.multiPropose(reqMap, asMaster)
+func (sp *spaxos) propose(reqid uint64, value []byte, asMaster bool) error {
+	return sp.multiPropose(reqid, [][]byte{value}, asMaster)
 }
 
 // IMPORTANT:
@@ -421,6 +444,16 @@ func (sp *spaxos) runTick() {
 	}
 }
 
+// FOR TEST
+func (sp *spaxos) fakeRunStateMachine() {
+	// only to recieve stop signal
+	select {
+	case <-sp.stop:
+		close(sp.done)
+		return
+	}
+}
+
 func (sp *spaxos) runStateMachine() {
 	var propc chan pb.Message
 
@@ -443,10 +476,7 @@ func (sp *spaxos) runStateMachine() {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
 			propMsg.Index = sp.maxIndex + 1
-			LogDebug("prop index %d propitem cnt %d firstitem len %d",
-				propMsg.Index,
-				len(propMsg.Entry.Value.Values),
-				len(propMsg.Entry.Value.Values[0].Value))
+			LogDebug("prop msg %v", propMsg)
 			sp.step(propMsg)
 
 		case msg := <-sp.recvc:
@@ -482,8 +512,11 @@ func (sp *spaxos) runStateMachine() {
 
 				delete(sp.timeoutQueue, sp.elapsed)
 			}
-		}
 
+		case <-sp.stop:
+			close(sp.done)
+			return
+		}
 	}
 }
 
@@ -574,6 +607,9 @@ func (sp *spaxos) runStorage(db Storager) {
 		case sp.sendc <- sendingMsgs:
 			// send out msgs
 			sendingMsgs = nil
+
+		case <-sp.done:
+			return
 		}
 	}
 }
@@ -615,14 +651,20 @@ func (sp *spaxos) runNetwork(net Networker) {
 					sendingMsgs = append(sendingMsgs, msg)
 				}
 			}
+			LogDebug("msgs %d forwardingMsgs %d sendingMsgs %d",
+				len(msgs), len(forwardingMsgs), len(sendingMsgs))
 
 		// sending msg only when needed
 		case nsendc <- smsg:
 			sendingMsgs = sendingMsgs[1:]
+			LogDebug("sending msg %v", smsg)
 
 		// forwarding msg only when needed
 		case forwardc <- fmsg:
 			forwardingMsgs = forwardingMsgs[1:]
+
+		case <-sp.done:
+			return
 		}
 	}
 }

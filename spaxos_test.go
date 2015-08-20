@@ -133,10 +133,11 @@ func TestSimplePropose(t *testing.T) {
 	sp := randSpaxos()
 	assert(nil != sp)
 
+	defer sp.Stop()
 	go sp.runStateMachine()
 
-	reqMap := randPropValue(1)
-	sp.multiPropose(reqMap, false)
+	reqid, values := randPropValue(1)
+	sp.multiPropose(reqid, values, false)
 
 	// wait for
 	spkg := <-sp.storec
@@ -156,10 +157,12 @@ func TestSimplePropose(t *testing.T) {
 		assert(ins.promisedNum == ins.maxProposedNum)
 		assert(1 == len(ins.proposingValue.Values))
 		{
-			v := ins.proposingValue.Values[0]
-			_, ok := reqMap[v.Reqid]
-			assert(true == ok)
-			assert(0 == bytes.Compare(v.Value, reqMap[v.Reqid]))
+			preqid := ins.proposingValue.Reqid
+			pvalues := ins.proposingValue.Values
+			assert(reqid == preqid)
+			assert(1 == len(pvalues))
+			assert(len(values) == len(pvalues))
+			assert(0 == bytes.Compare(values[0], pvalues[0]))
 		}
 
 		hs := spkg.outHardStates[0]
@@ -230,10 +233,12 @@ func TestSimplePropose(t *testing.T) {
 		acceptedValue := hs.AcceptedValue
 		assert(1 == len(acceptedValue.Values))
 		{
-			v := acceptedValue.Values[0]
-			_, ok := reqMap[v.Reqid]
-			assert(true == ok)
-			assert(0 == bytes.Compare(v.Value, reqMap[v.Reqid]))
+			areqid := acceptedValue.Reqid
+			avalues := acceptedValue.Values
+			assert(reqid == areqid)
+			assert(1 == len(avalues))
+			assert(len(values) == len(avalues))
+			assert(0 == bytes.Compare(values[0], avalues[0]))
 		}
 	}
 }
@@ -248,6 +253,8 @@ func TestRunStorage(t *testing.T) {
 	db := NewFakeStorage()
 	assert(nil != db)
 
+	defer sp.Stop()
+	go sp.fakeRunStateMachine()
 	go sp.runStorage(db)
 
 	ins := randSpaxosInstance()
@@ -298,6 +305,8 @@ func TestRunNetwork(t *testing.T) {
 	fnet := NewFakeNetwork(sp.id)
 	assert(nil != fnet)
 
+	defer sp.Stop()
+	go sp.fakeRunStateMachine()
 	go sp.runNetwork(fnet)
 
 	ins := randSpaxosInstance()
@@ -307,6 +316,15 @@ func TestRunNetwork(t *testing.T) {
 		msg := randPropRsp(sp, ins)
 		msg.To = msg.From
 		msg.From = sp.id
+		if msg.To == sp.id {
+			if uint64(1) == sp.id {
+				msg.To = 2
+			} else {
+				msg.To = 1
+			}
+		}
+		assert(msg.To != sp.id)
+
 		sp.sendc <- []pb.Message{msg}
 
 		sendmsg := <-fnet.GetSendChan()

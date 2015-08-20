@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewSpaxosInstance(t *testing.T) {
-	printIndicate()
+	println(TestNewSpaxosInstance)
 
 	index := uint64(rand.Uint32())
 	ins := newSpaxosInstance(index)
@@ -158,11 +158,13 @@ func TestStepAcceptor(t *testing.T) {
 		remoteIns.index = ins.index
 		assert(nil != remoteIns)
 		var remoteSp *spaxos
-		for {
-			remoteSp = randSpaxos()
-			assert(nil != remoteSp)
-			if sp.id != remoteSp.id {
-				break
+		remoteSp = randSpaxos()
+		assert(nil != remoteSp)
+		if sp.id == remoteSp.id {
+			if uint64(1) == sp.id {
+				remoteSp.id = 2
+			} else {
+				remoteSp.id = 1
 			}
 		}
 
@@ -170,6 +172,10 @@ func TestStepAcceptor(t *testing.T) {
 
 		// prepare
 		for {
+			remoteIns.promisedNum = ins.maxProposedNum
+			remoteIns.acceptedNum = 0
+			remoteIns.acceptedValue = nil
+
 			ins.beginPreparePhase(sp)
 			propMsg := sp.outMsgs[0]
 			propMsg.To = remoteSp.id
@@ -187,6 +193,8 @@ func TestStepAcceptor(t *testing.T) {
 				break
 			}
 		}
+
+		return
 
 		// accept
 		{

@@ -9,6 +9,8 @@ import (
 const MaxNodeID uint64 = 1024
 
 type storePackage struct {
+	// chosenIndex: mark all index below as chosen!
+	chosenIndex   uint64
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
 }
@@ -81,7 +83,7 @@ func (fnet *FakeNetwork) GetRecvChan() chan pb.Message {
 	return fnet.frecvc
 }
 
-func (fnet *FakeNetwork) run(sendc chan pb.Message) {
+func (fnet *FakeNetwork) run(sendc chan pb.Message, done chan struct{}) {
 	for {
 		dsendc, smsg := getMsg(sendc, fnet.sendingMsgs)
 		drecvc, rmsg := getMsg(fnet.frecvc, fnet.recvingMsgs)
@@ -105,16 +107,24 @@ func (fnet *FakeNetwork) run(sendc chan pb.Message) {
 			// recv msg from fnet.fsendc, apppend into sendingMsgsQueue
 		case msg := <-fnet.fsendc:
 			fnet.sendingMsgs = append(fnet.sendingMsgs, msg)
+
+		case <-done:
+			return
 		}
 	}
 }
 
 type FakeNetworkCenter struct {
+	stop  chan struct{}
+	done  chan struct{}
 	fnets map[uint64]*FakeNetwork
 }
 
 func NewFakeNetworkCenter(groups map[uint64]bool) *FakeNetworkCenter {
-	fcenter := &FakeNetworkCenter{fnets: make(map[uint64]*FakeNetwork)}
+	fcenter := &FakeNetworkCenter{
+		fnets: make(map[uint64]*FakeNetwork),
+		stop:  make(chan struct{}),
+		done:  make(chan struct{})}
 	assert(nil != fcenter)
 	for id, _ := range groups {
 		fnet := NewFakeNetwork(id)
@@ -122,6 +132,16 @@ func NewFakeNetworkCenter(groups map[uint64]bool) *FakeNetworkCenter {
 		fcenter.fnets[id] = fnet
 	}
 	return fcenter
+}
+
+func (fcenter *FakeNetworkCenter) Stop() {
+	select {
+	case fcenter.stop <- struct{}{}:
+	case <-fcenter.done:
+		return
+	}
+
+	<-fcenter.done
 }
 
 func (fcenter *FakeNetworkCenter) Get(id uint64) *FakeNetwork {
@@ -137,14 +157,23 @@ func (fcenter *FakeNetworkCenter) Run() {
 
 	// fan in: => sendc
 	for _, fnet := range fcenter.fnets {
-		go fnet.run(sendc)
+		go fnet.run(sendc, fcenter.done)
 	}
 
 	for {
-		rmsg := <-sendc
-
-		if fnet, ok := fcenter.fnets[rmsg.To]; ok {
-			fnet.crecvc <- rmsg
+		select {
+		case rmsg := <-sendc:
+			if fnet, ok := fcenter.fnets[rmsg.To]; ok {
+				select {
+				case fnet.crecvc <- rmsg:
+				case <-fcenter.stop:
+					close(fcenter.done)
+					return
+				}
+			}
+		case <-fcenter.stop:
+			close(fcenter.done)
+			return
 		}
 	}
 }
