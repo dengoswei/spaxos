@@ -32,6 +32,7 @@ enum MessageType {
 
     MsgInsRebuild       = 20;
     MsgInsRebuildResp   = 21;
+    MsgUpdateMinIndex   = 22;
 
     MsgChosen           = 30;
 

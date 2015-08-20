@@ -10,7 +10,7 @@ const MaxNodeID uint64 = 1024
 
 type storePackage struct {
 	// chosenIndex: mark all index below as chosen!
-	chosenIndex   uint64
+	minIndex      uint64
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
 }
@@ -20,6 +20,8 @@ type Storager interface {
 	Store([]pb.HardState) error
 
 	Get(index uint64) (pb.HardState, error)
+
+	SetMinIndex(index uint64) error
 }
 
 // TODO: fix interface func & name!!!
@@ -29,7 +31,8 @@ type Networker interface {
 }
 
 type FakeStorage struct {
-	table map[uint64]pb.HardState
+	minIndex uint64
+	table    map[uint64]pb.HardState
 }
 
 func NewFakeStorage() *FakeStorage {
@@ -45,10 +48,26 @@ func (store *FakeStorage) Store(hss []pb.HardState) error {
 	return nil
 }
 
+func (store *FakeStorage) SetMinIndex(index uint64) error {
+	if store.minIndex == index {
+		return errors.New("not less then")
+	}
+
+	assert(store.minIndex < index)
+	store.minIndex = index
+	LogDebug("%v store.minIndex %d index %d",
+		store.SetMinIndex, store.minIndex, index)
+	return nil
+}
+
 func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {
 	assert(0 < index)
 	if hs, ok := store.table[index]; ok {
 		assert(hs.Index == index)
+		if hs.Index <= store.minIndex {
+			hs.Chosen = true
+		}
+
 		return hs, nil
 	}
 	return pb.HardState{}, errors.New("Not Exist")

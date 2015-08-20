@@ -261,7 +261,6 @@ func TestBeginPreparePhase(t *testing.T) {
 		assert(nil != ins)
 		sp := randSpaxos()
 		assert(nil != sp)
-		assert(nil != sp.chosenItems)
 
 		ins.chosen = true
 		ins.proposingValue = ins.acceptedValue

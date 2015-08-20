@@ -50,6 +50,7 @@ const (
 	MsgMCliProp       MessageType = 13
 	MsgInsRebuild     MessageType = 20
 	MsgInsRebuildResp MessageType = 21
+	MsgUpdateMinIndex MessageType = 22
 	MsgChosen         MessageType = 30
 	MsgInvalid        MessageType = 255
 )
@@ -67,6 +68,7 @@ var MessageType_name = map[int32]string{
 	13:  "MsgMCliProp",
 	20:  "MsgInsRebuild",
 	21:  "MsgInsRebuildResp",
+	22:  "MsgUpdateMinIndex",
 	30:  "MsgChosen",
 	255: "MsgInvalid",
 }
@@ -83,6 +85,7 @@ var MessageType_value = map[string]int32{
 	"MsgMCliProp":       13,
 	"MsgInsRebuild":     20,
 	"MsgInsRebuildResp": 21,
+	"MsgUpdateMinIndex": 22,
 	"MsgChosen":         30,
 	"MsgInvalid":        255,
 }

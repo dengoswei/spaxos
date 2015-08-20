@@ -14,8 +14,10 @@ type spaxos struct {
 	// current state
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
-	chosenMap     map[uint64]bool
-	chosenItems   map[uint64]pb.HardState
+
+	nextMinIndex uint64
+	chosenMap    map[uint64]bool
+	//	chosenItems  map[uint64]pb.HardState
 
 	// index & spaxosInstance
 	maxIndex uint64
@@ -39,8 +41,8 @@ type spaxos struct {
 	propc chan pb.Message
 
 	// TODO:
-	chindexc chan uint64
-	chosenc  chan []pb.HardState
+	// chindexc chan uint64
+	// chosenc  chan []pb.HardState
 
 	// attach: smt & st
 	storec chan storePackage
@@ -90,12 +92,12 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	sp.tickc = make(chan struct{})
 
 	sp.chosenMap = make(map[uint64]bool)
-	sp.chosenItems = make(map[uint64]pb.HardState)
+	//	sp.chosenItems = make(map[uint64]pb.HardState)
 	sp.insgroup = make(map[uint64]*spaxosInstance)
 	sp.rebuildList = make(map[uint64][]pb.Message)
 
 	sp.propc = make(chan pb.Message)
-	sp.chosenc = make(chan []pb.HardState)
+	// sp.chosenc = make(chan []pb.HardState)
 
 	// TODO
 
@@ -143,25 +145,37 @@ func (sp *spaxos) Stop() {
 //}
 //
 
-func (sp *spaxos) markChosen(index uint64) {
+func (sp *spaxos) submitChosen(index uint64) {
 	assert(0 < index)
 	assert(nil != sp.chosenMap)
 	sp.chosenMap[index] = true
-}
-
-func (sp *spaxos) submitChosen(hs pb.HardState) {
-	assert(true == hs.Chosen)
-	assert(nil != sp.chosenItems)
-
-	val, ok := sp.chosenItems[hs.Index]
-	if !ok {
-		sp.chosenItems[hs.Index] = hs
-		return
+	assert(sp.nextMinIndex >= sp.minIndex)
+	if sp.nextMinIndex+1 == index {
+		// update nextMinIndex
+		newMinIndex := sp.nextMinIndex + 1
+		for ; newMinIndex < sp.maxIndex; newMinIndex++ {
+			if _, ok := sp.chosenMap[newMinIndex+1]; !ok {
+				break
+			}
+		}
+		assert(newMinIndex >= sp.nextMinIndex+1)
+		sp.nextMinIndex = newMinIndex
 	}
-
-	// already chosen
-	assert(true == val.Equal(&hs))
 }
+
+//func (sp *spaxos) submitChosen(hs pb.HardState) {
+//	assert(true == hs.Chosen)
+//	assert(nil != sp.chosenItems)
+//
+//	val, ok := sp.chosenItems[hs.Index]
+//	if !ok {
+//		sp.chosenItems[hs.Index] = hs
+//		return
+//	}
+//
+//	// already chosen
+//	assert(true == val.Equal(&hs))
+//}
 
 func (sp *spaxos) appendMsg(msg pb.Message) {
 	assert(sp.id == msg.From)
@@ -257,16 +271,16 @@ func (sp *spaxos) propose(reqid uint64, value []byte, asMaster bool) error {
 //       reqid := propValue.Reqid
 //       value := propValue.Value
 //   }
-func (sp *spaxos) GetChosenValue() []pb.HardState {
-	select {
-	case chosengroup := <-sp.chosenc:
-		// do not repeat !!!
-		return chosengroup
-		// TODO: add timeout ?
-	}
-
-	return nil
-}
+//func (sp *spaxos) GetChosenValue() []pb.HardState {
+//	select {
+//	case chosengroup := <-sp.chosenc:
+//		// do not repeat !!!
+//		return chosengroup
+//		// TODO: add timeout ?
+//	}
+//
+//	return nil
+//}
 
 func (sp *spaxos) GetChosenValueAt(index uint64, db Storager) (pb.HardState, error) {
 	// for index < db.ChosenIndex
@@ -296,22 +310,22 @@ func (sp *spaxos) GetChosenValueAt(index uint64, db Storager) (pb.HardState, err
 //	return nil, nil
 //}
 
-func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
-	if 0 == len(sp.chosenItems) {
-		return nil, nil
-	}
-
-	cits := []pb.HardState{}
-	for idx, hs := range sp.chosenItems {
-		assert(idx == hs.Index)
-		assert(true == hs.Chosen)
-		assert(nil != hs.AcceptedValue)
-		cits = append(cits, hs)
-	}
-
-	assert(len(sp.chosenItems) == len(cits))
-	return sp.chosenc, cits
-}
+//func (sp *spaxos) getChosen() (chan []pb.HardState, []pb.HardState) {
+//	if 0 == len(sp.chosenItems) {
+//		return nil, nil
+//	}
+//
+//	cits := []pb.HardState{}
+//	for idx, hs := range sp.chosenItems {
+//		assert(idx == hs.Index)
+//		assert(true == hs.Chosen)
+//		assert(nil != hs.AcceptedValue)
+//		cits = append(cits, hs)
+//	}
+//
+//	assert(len(sp.chosenItems) == len(cits))
+//	return sp.chosenc, cits
+//}
 
 func (sp *spaxos) getStorePackage() (chan storePackage, storePackage) {
 	if nil == sp.outMsgs && nil == sp.outHardStates {
@@ -319,7 +333,8 @@ func (sp *spaxos) getStorePackage() (chan storePackage, storePackage) {
 	}
 
 	return sp.storec, storePackage{
-		outMsgs: sp.outMsgs, outHardStates: sp.outHardStates}
+		minIndex: sp.nextMinIndex,
+		outMsgs:  sp.outMsgs, outHardStates: sp.outHardStates}
 }
 
 // State Machine Threaed
@@ -347,7 +362,7 @@ func (sp *spaxos) getSpaxosInstance(index uint64) *spaxosInstance {
 		LogDebug("inc sp.maxIndex from %d to %d", sp.maxIndex, index)
 		sp.maxIndex = index
 		return ins
-	} else if index < sp.minIndex {
+	} else if index <= sp.minIndex {
 		// need rebuild
 		return nil
 	}
@@ -412,9 +427,29 @@ func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
 	assert(0 < len(sp.timeoutQueue[ins.timeoutAt]))
 }
 
+func (sp *spaxos) updateMinIndex(newMinIndex uint64) {
+	if sp.minIndex >= newMinIndex {
+		return // do nothing
+	}
+
+	assert(newMinIndex <= sp.nextMinIndex)
+	for index := sp.minIndex + 1; index <= newMinIndex; index++ {
+		delete(sp.insgroup, index)
+		delete(sp.chosenMap, index)
+		sp.minIndex = index
+		LogDebug("updateMinIndex retire index %d", index)
+	}
+	assert(sp.minIndex == newMinIndex)
+}
+
 func (sp *spaxos) step(msg pb.Message) {
 	assert(0 != msg.Index)
 	assert(sp.id == msg.To)
+
+	if pb.MsgUpdateMinIndex == msg.Type {
+		sp.updateMinIndex(msg.Index)
+		return
+	}
 
 	// get ins by index
 	ins := sp.getSpaxosInstance(msg.Index)
@@ -467,7 +502,7 @@ func (sp *spaxos) runStateMachine() {
 		}
 
 		// select on sp.chosenc only when abs needed
-		chosenc, cits := sp.getChosen()
+		// chosenc, cits := sp.getChosen()
 
 		// select on sp.storec only when abs needed
 		storec, spkg := sp.getStorePackage()
@@ -488,10 +523,10 @@ func (sp *spaxos) runStateMachine() {
 				sp.step(msg)
 			}
 
-		case chosenc <- cits:
-			// success send out the chosen items
-			// clean up the chosenItems state
-			sp.chosenItems = make(map[uint64]pb.HardState)
+			//	case chosenc <- cits:
+			//		// success send out the chosen items
+			//		// clean up the chosenItems state
+			//		sp.chosenItems = make(map[uint64]pb.HardState)
 
 		case storec <- spkg:
 			// clean up state
@@ -566,6 +601,17 @@ func (sp *spaxos) runStorage(db Storager) {
 				err := db.Store(outHardStates)
 				if nil != err {
 					dropMsgs = true
+				}
+			}
+
+			// tell runStateMachine to update minIndex
+			if false == dropMsgs {
+				err := db.SetMinIndex(spkg.minIndex)
+				if nil == err {
+					indexMsg := pb.Message{
+						Type: pb.MsgUpdateMinIndex, Index: spkg.minIndex,
+						From: sp.id, To: sp.id}
+					sendingMsgs = append(sendingMsgs, indexMsg)
 				}
 			}
 

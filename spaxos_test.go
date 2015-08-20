@@ -17,11 +17,14 @@ func TestNewPaxos(t *testing.T) {
 
 	sp := NewSpaxos(1, groups)
 	assert(nil != sp)
-	assert(nil != sp.chosenItems)
+	assert(nil != sp.chosenMap)
 	assert(nil != sp.insgroup)
 	assert(nil != sp.rebuildList)
+	assert(nil != sp.done)
+	assert(nil != sp.stop)
+	assert(nil != sp.timeoutQueue)
+	assert(nil != sp.tickc)
 	assert(nil != sp.propc)
-	assert(nil != sp.chosenc)
 	assert(nil != sp.storec)
 	assert(nil != sp.sendc)
 	assert(nil != sp.recvc)
@@ -32,19 +35,23 @@ func TestSubmitChosen(t *testing.T) {
 
 	sp := randSpaxos()
 	assert(nil != sp)
-	assert(0 == len(sp.chosenItems))
+	assert(0 == len(sp.chosenMap))
 
-	hs := randHardState()
-	assert(0 != hs.Index)
+	sp.maxIndex = 10
+	sp.minIndex = 0
+	sp.submitChosen(1)
+	assert(1 == len(sp.chosenMap))
+	b, ok := sp.chosenMap[1]
+	assert(true == ok)
+	assert(true == b)
+	assert(1 == sp.nextMinIndex)
 
-	hs.Chosen = true
-	sp.submitChosen(hs)
-	assert(1 == len(sp.chosenItems))
-	chs := sp.chosenItems[hs.Index]
-	assert(true == hs.Equal(&chs))
-
-	sp.submitChosen(hs)
-	assert(1 == len(sp.chosenItems))
+	sp.submitChosen(3)
+	assert(2 == len(sp.chosenMap))
+	assert(1 == sp.nextMinIndex)
+	sp.submitChosen(2)
+	assert(3 == len(sp.chosenMap))
+	assert(3 == sp.nextMinIndex)
 }
 
 func TestAppend(t *testing.T) {
@@ -144,6 +151,7 @@ func TestSimplePropose(t *testing.T) {
 	assert(1 == len(spkg.outMsgs))
 	assert(1 == len(spkg.outHardStates))
 
+	assert(0 == sp.minIndex)
 	assert(uint64(1) == sp.maxIndex)
 	assert(1 == len(sp.insgroup))
 	ins := sp.getSpaxosInstance(sp.maxIndex)
@@ -211,7 +219,9 @@ func TestSimplePropose(t *testing.T) {
 	}
 
 	assert(true == ins.chosen)
+	assert(1 == sp.nextMinIndex)
 	spkg = <-sp.storec
+	assert(1 == spkg.minIndex)
 	assert(1 == len(spkg.outMsgs))
 	assert(0 == len(spkg.outHardStates))
 	{
@@ -219,28 +229,28 @@ func TestSimplePropose(t *testing.T) {
 		assert(pb.MsgChosen == msg.Type)
 	}
 
-	cits := <-sp.chosenc
-	assert(1 == len(cits))
-	{
-		hs := cits[0]
-		assert(true == hs.Chosen)
-		assert(hs.Index == ins.index)
-		assert(ins.maxProposedNum == hs.MaxProposedNum)
-		assert(ins.promisedNum == hs.MaxPromisedNum)
-		assert(ins.acceptedNum == hs.MaxAcceptedNum)
-		assert(true == hs.AcceptedValue.Equal(ins.acceptedValue))
-
-		acceptedValue := hs.AcceptedValue
-		assert(1 == len(acceptedValue.Values))
-		{
-			areqid := acceptedValue.Reqid
-			avalues := acceptedValue.Values
-			assert(reqid == areqid)
-			assert(1 == len(avalues))
-			assert(len(values) == len(avalues))
-			assert(0 == bytes.Compare(values[0], avalues[0]))
-		}
-	}
+	//	cits := <-sp.chosenc
+	//	assert(1 == len(cits))
+	//	{
+	//		hs := cits[0]
+	//		assert(true == hs.Chosen)
+	//		assert(hs.Index == ins.index)
+	//		assert(ins.maxProposedNum == hs.MaxProposedNum)
+	//		assert(ins.promisedNum == hs.MaxPromisedNum)
+	//		assert(ins.acceptedNum == hs.MaxAcceptedNum)
+	//		assert(true == hs.AcceptedValue.Equal(ins.acceptedValue))
+	//
+	//		acceptedValue := hs.AcceptedValue
+	//		assert(1 == len(acceptedValue.Values))
+	//		{
+	//			areqid := acceptedValue.Reqid
+	//			avalues := acceptedValue.Values
+	//			assert(reqid == areqid)
+	//			assert(1 == len(avalues))
+	//			assert(len(values) == len(avalues))
+	//			assert(0 == bytes.Compare(values[0], avalues[0]))
+	//		}
+	//	}
 }
 
 //
