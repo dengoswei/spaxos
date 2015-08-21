@@ -279,12 +279,12 @@ func TestRunNetwork(t *testing.T) {
 	sp := randSpaxos()
 	assert(nil != sp)
 
-	fnet := NewFakeNetwork(sp.id)
-	assert(nil != fnet)
+	fswitch := NewFakeSwitch(sp.id)
+	assert(nil != fswitch)
 
 	defer sp.Stop()
 	go sp.fakeRunStateMachine()
-	go sp.runNetwork(fnet)
+	go sp.runSwitch(fswitch)
 
 	ins := randSpaxosInstance()
 	assert(nil != ins)
@@ -304,7 +304,7 @@ func TestRunNetwork(t *testing.T) {
 
 		sp.sendc <- []pb.Message{msg}
 
-		sendmsg := <-fnet.GetSendChan()
+		sendmsg := <-fswitch.GetSendChan()
 		assert(sendmsg.Type == msg.Type)
 		assert(sendmsg.Index == msg.Index)
 		assert(sendmsg.From == msg.From)
@@ -320,7 +320,7 @@ func TestRunNetwork(t *testing.T) {
 	{
 		msg := randPropRsp(sp, ins)
 		assert(sp.id == msg.To)
-		fnet.GetRecvChan() <- msg
+		fswitch.GetRecvChan() <- msg
 
 		recvmsg := <-sp.recvc
 		assert(recvmsg.Type == msg.Type)

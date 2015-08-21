@@ -190,6 +190,13 @@ func GetFunctionName(f interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
+func GetCurrentFuncName() string {
+	pc, _, _, ok := runtime.Caller(1)
+	assert(true == ok)
+
+	return runtime.FuncForPC(pc).Name()
+}
+
 func printIndicate() {
 	if nil == rd {
 		s := rand.NewSource(time.Now().UnixNano())

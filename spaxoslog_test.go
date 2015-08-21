@@ -46,7 +46,13 @@ func TestReadConfig(t *testing.T) {
 func TestNewSpaxosLog(t *testing.T) {
 	printIndicate()
 
-	slog, err := NewSpaxosLog(configFile)
+	c, err := ReadConfig(configFile)
+	assert(nil == err)
+	assert(nil != c)
+	db := NewFakeStorage()
+	assert(nil != db)
+	sw := NewFakeSwitch(c.Selfid)
+	slog, err := NewSpaxosLog(c, db, sw)
 	assert(nil == err)
 	assert(nil != slog)
 }
@@ -54,7 +60,13 @@ func TestNewSpaxosLog(t *testing.T) {
 func TestSpaxosLogRunAndStop(t *testing.T) {
 	printIndicate()
 
-	slog, err := NewSpaxosLog(configFile)
+	c, err := ReadConfig(configFile)
+	assert(nil == err)
+	assert(nil != c)
+	db := NewFakeStorage()
+	assert(nil != db)
+	sw := NewFakeSwitch(c.Selfid)
+	slog, err := NewSpaxosLog(c, db, sw)
 	assert(nil == err)
 	assert(nil != slog)
 

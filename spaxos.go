@@ -625,14 +625,14 @@ func (sp *spaxos) runStorage(db Storager) {
 	}
 }
 
-// Network Thread
-func (sp *spaxos) runNetwork(net Networker) {
+// swwork Thread
+func (sp *spaxos) runSwitch(sw Switcher) {
 	var sendingMsgs []pb.Message
 	var forwardingMsgs []pb.Message
 
-	nrecvc := net.GetRecvChan()
+	nrecvc := sw.GetRecvChan()
 	for {
-		nsendc, smsg := getMsg(net.GetSendChan(), sendingMsgs)
+		nsendc, smsg := getMsg(sw.GetSendChan(), sendingMsgs)
 		if nil != nsendc {
 			assert(sp.id == smsg.From)
 		}
@@ -643,7 +643,7 @@ func (sp *spaxos) runNetwork(net Networker) {
 		}
 
 		select {
-		// collect msg from network recvc
+		// collect msg from swwork recvc
 		case msg := <-nrecvc:
 			assert(0 < msg.Index)
 			if msg.To == sp.id {
@@ -663,7 +663,7 @@ func (sp *spaxos) runNetwork(net Networker) {
 				}
 			}
 			LogDebug("%s msgs %d forwardingMsgs %d sendingMsgs %d",
-				GetFunctionName(sp.runNetwork),
+				GetFunctionName(sp.runSwitch),
 				len(msgs), len(forwardingMsgs), len(sendingMsgs))
 
 		// sending msg only when needed

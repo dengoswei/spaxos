@@ -6,23 +6,23 @@ import (
 	pb "spaxos/spaxospb"
 )
 
-func TestFakeNetwork(t *testing.T) {
+func TestFakeSwitch(t *testing.T) {
 	printIndicate()
 
 	selfid := uint64(1)
 	testid := uint64(2)
 
-	fnet := NewFakeNetwork(selfid)
-	assert(nil != fnet)
+	fswitch := NewFakeSwitch(selfid)
+	assert(nil != fswitch)
 
-	sendc := fnet.GetSendChan()
+	sendc := fswitch.GetSendChan()
 	assert(nil != sendc)
-	recvc := fnet.GetRecvChan()
+	recvc := fswitch.GetRecvChan()
 	assert(nil != recvc)
 
 	tsendc := make(chan pb.Message)
 	done := make(chan struct{})
-	go fnet.run(tsendc, done)
+	go fswitch.run(tsendc, done)
 	defer close(done)
 
 	smsg := pb.Message{From: selfid, To: testid}
@@ -32,13 +32,13 @@ func TestFakeNetwork(t *testing.T) {
 	assert(trmsg.To == testid)
 
 	rmsg := pb.Message{From: testid, To: selfid}
-	fnet.crecvc <- rmsg
+	fswitch.crecvc <- rmsg
 	tsmsg := <-recvc
 	assert(tsmsg.To == selfid)
 	assert(tsmsg.From == testid)
 }
 
-func TestFakeNetworkCenter(t *testing.T) {
+func TestFakeSwitchCenter(t *testing.T) {
 	printIndicate()
 
 	groups := make(map[uint64]bool)
@@ -46,21 +46,21 @@ func TestFakeNetworkCenter(t *testing.T) {
 	groups[uint64(2)] = true
 	groups[uint64(3)] = true
 
-	fcenter := NewFakeNetworkCenter(groups)
+	fcenter := NewFakeSwitchCenter(groups)
 	assert(nil != fcenter)
 
 	for id, _ := range groups {
-		fnet := fcenter.Get(id)
-		assert(nil != fnet)
-		assert(fnet.id == id)
+		fswitch := fcenter.Get(id)
+		assert(nil != fswitch)
+		assert(fswitch.id == id)
 	}
 
 	go fcenter.Run()
 	defer fcenter.Stop()
 
 	msg := pb.Message{From: 1, To: 2}
-	fnet := fcenter.Get(1)
-	fnet.GetSendChan() <- msg
+	fswitch := fcenter.Get(1)
+	fswitch.GetSendChan() <- msg
 
 	rmsg := <-fcenter.Get(2).GetRecvChan()
 	assert(rmsg.From == 1)

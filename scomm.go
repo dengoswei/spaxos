@@ -27,7 +27,7 @@ type Storager interface {
 }
 
 // TODO: fix interface func & name!!!
-type Networker interface {
+type Switcher interface {
 	GetSendChan() chan pb.Message
 	GetRecvChan() chan pb.Message
 }
@@ -86,7 +86,7 @@ func (store *FakeStorage) Get(index uint64) (*pb.HardState, error) {
 	return nil, nil
 }
 
-type FakeNetwork struct {
+type FakeSwitch struct {
 	id uint64
 	// attach to fron-end
 	fsendc chan pb.Message
@@ -98,47 +98,47 @@ type FakeNetwork struct {
 	recvingMsgs []pb.Message
 }
 
-func NewFakeNetwork(id uint64) *FakeNetwork {
-	fnet := &FakeNetwork{
+func NewFakeSwitch(id uint64) *FakeSwitch {
+	fswitch := &FakeSwitch{
 		id:     id,
 		fsendc: make(chan pb.Message),
 		frecvc: make(chan pb.Message),
 		crecvc: make(chan pb.Message)}
-	return fnet
+	return fswitch
 }
 
-func (fnet *FakeNetwork) GetSendChan() chan pb.Message {
-	return fnet.fsendc
+func (fswitch *FakeSwitch) GetSendChan() chan pb.Message {
+	return fswitch.fsendc
 }
 
-func (fnet *FakeNetwork) GetRecvChan() chan pb.Message {
-	return fnet.frecvc
+func (fswitch *FakeSwitch) GetRecvChan() chan pb.Message {
+	return fswitch.frecvc
 }
 
-func (fnet *FakeNetwork) run(sendc chan pb.Message, done chan struct{}) {
+func (fswitch *FakeSwitch) run(sendc chan pb.Message, done chan struct{}) {
 	for {
-		dsendc, smsg := getMsg(sendc, fnet.sendingMsgs)
-		drecvc, rmsg := getMsg(fnet.frecvc, fnet.recvingMsgs)
+		dsendc, smsg := getMsg(sendc, fswitch.sendingMsgs)
+		drecvc, rmsg := getMsg(fswitch.frecvc, fswitch.recvingMsgs)
 
 		// TODO
 		// drop if hold too many sendingMsgs or recvingMsgs ?
 		select {
 		// send msg in sendingMsgsQueue to sendc
 		case dsendc <- smsg:
-			fnet.sendingMsgs = fnet.sendingMsgs[1:]
+			fswitch.sendingMsgs = fswitch.sendingMsgs[1:]
 
 		// recv msg from recv append into recvingMsgsQueue
-		case msg := <-fnet.crecvc:
-			assert(fnet.id == msg.To)
-			fnet.recvingMsgs = append(fnet.recvingMsgs, msg)
+		case msg := <-fswitch.crecvc:
+			assert(fswitch.id == msg.To)
+			fswitch.recvingMsgs = append(fswitch.recvingMsgs, msg)
 
-		// send msg in recvingMsgsQueue to fnet.frecvc
+		// send msg in recvingMsgsQueue to fswitch.frecvc
 		case drecvc <- rmsg:
-			fnet.recvingMsgs = fnet.recvingMsgs[1:]
+			fswitch.recvingMsgs = fswitch.recvingMsgs[1:]
 
-			// recv msg from fnet.fsendc, apppend into sendingMsgsQueue
-		case msg := <-fnet.fsendc:
-			fnet.sendingMsgs = append(fnet.sendingMsgs, msg)
+			// recv msg from fswitch.fsendc, apppend into sendingMsgsQueue
+		case msg := <-fswitch.fsendc:
+			fswitch.sendingMsgs = append(fswitch.sendingMsgs, msg)
 
 		case <-done:
 			return
@@ -146,27 +146,27 @@ func (fnet *FakeNetwork) run(sendc chan pb.Message, done chan struct{}) {
 	}
 }
 
-type FakeNetworkCenter struct {
-	stop  chan struct{}
-	done  chan struct{}
-	fnets map[uint64]*FakeNetwork
+type FakeSwitchCenter struct {
+	stop     chan struct{}
+	done     chan struct{}
+	fswitchs map[uint64]*FakeSwitch
 }
 
-func NewFakeNetworkCenter(groups map[uint64]bool) *FakeNetworkCenter {
-	fcenter := &FakeNetworkCenter{
-		fnets: make(map[uint64]*FakeNetwork),
-		stop:  make(chan struct{}),
-		done:  make(chan struct{})}
+func NewFakeSwitchCenter(groups map[uint64]bool) *FakeSwitchCenter {
+	fcenter := &FakeSwitchCenter{
+		fswitchs: make(map[uint64]*FakeSwitch),
+		stop:     make(chan struct{}),
+		done:     make(chan struct{})}
 	assert(nil != fcenter)
 	for id, _ := range groups {
-		fnet := NewFakeNetwork(id)
-		assert(nil != fnet)
-		fcenter.fnets[id] = fnet
+		fswitch := NewFakeSwitch(id)
+		assert(nil != fswitch)
+		fcenter.fswitchs[id] = fswitch
 	}
 	return fcenter
 }
 
-func (fcenter *FakeNetworkCenter) Stop() {
+func (fcenter *FakeSwitchCenter) Stop() {
 	select {
 	case fcenter.stop <- struct{}{}:
 	case <-fcenter.done:
@@ -176,28 +176,28 @@ func (fcenter *FakeNetworkCenter) Stop() {
 	<-fcenter.done
 }
 
-func (fcenter *FakeNetworkCenter) Get(id uint64) *FakeNetwork {
-	if fnet, ok := fcenter.fnets[id]; ok {
-		assert(nil != fnet)
-		return fnet
+func (fcenter *FakeSwitchCenter) Get(id uint64) *FakeSwitch {
+	if fswitch, ok := fcenter.fswitchs[id]; ok {
+		assert(nil != fswitch)
+		return fswitch
 	}
 	return nil
 }
 
-func (fcenter *FakeNetworkCenter) Run() {
-	sendc := make(chan pb.Message, len(fcenter.fnets))
+func (fcenter *FakeSwitchCenter) Run() {
+	sendc := make(chan pb.Message, len(fcenter.fswitchs))
 
 	// fan in: => sendc
-	for _, fnet := range fcenter.fnets {
-		go fnet.run(sendc, fcenter.done)
+	for _, fswitch := range fcenter.fswitchs {
+		go fswitch.run(sendc, fcenter.done)
 	}
 
 	for {
 		select {
 		case rmsg := <-sendc:
-			if fnet, ok := fcenter.fnets[rmsg.To]; ok {
+			if fswitch, ok := fcenter.fswitchs[rmsg.To]; ok {
 				select {
-				case fnet.crecvc <- rmsg:
+				case fswitch.crecvc <- rmsg:
 				case <-fcenter.stop:
 					close(fcenter.done)
 					return

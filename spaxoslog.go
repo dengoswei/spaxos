@@ -36,9 +36,9 @@ func (c *Config) GetEntry(id uint64) GroupEntry {
 }
 
 type SpaxosLog struct {
-	sp  *spaxos
-	db  Storager
-	net Networker
+	sp *spaxos
+	db Storager
+	sw Switcher
 
 	minIndex uint64
 	maxIndex uint64
@@ -60,33 +60,15 @@ func ReadConfig(configFile string) (*Config, error) {
 	return c, nil
 }
 
-func NewSpaxosLog(configFile string) (*SpaxosLog, error) {
+func NewSpaxosLog(c *Config, db Storager, sw Switcher) (*SpaxosLog, error) {
 
-	slog := &SpaxosLog{}
-
-	c, err := ReadConfig(configFile)
-	if nil != err {
-		return nil, err
-	}
-
-	id := c.Selfid
-	groups := c.GetGroupIds()
-	// build db Storager
-	{
-		db := NewFakeStorage()
-		assert(nil != db)
-		slog.db = db
-	}
-
-	// build net
-	{
-		net := NewFakeNetwork(id)
-		assert(nil != net)
-		slog.net = net
-	}
+	slog := &SpaxosLog{db: db, sw: sw}
 
 	// init sp
 	{
+		id := c.Selfid
+		groups := c.GetGroupIds()
+
 		sp := newSpaxos(id, groups)
 		assert(nil != sp)
 
@@ -106,11 +88,11 @@ func NewSpaxosLog(configFile string) (*SpaxosLog, error) {
 func (slog *SpaxosLog) Run() {
 	assert(nil != slog.sp)
 	assert(nil != slog.db)
-	assert(nil != slog.net)
+	assert(nil != slog.sw)
 
 	go slog.sp.runStateMachine()
 	go slog.sp.runStorage(slog.db)
-	go slog.sp.runNetwork(slog.net)
+	go slog.sp.runSwitch(slog.sw)
 	slog.sp.runTick()
 }
 
