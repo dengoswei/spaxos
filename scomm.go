@@ -1,7 +1,7 @@
 package spaxos
 
 import (
-	"errors"
+	// "errors"
 
 	pb "spaxos/spaxospb"
 )
@@ -20,7 +20,7 @@ type Storager interface {
 	// store hard state
 	Store([]pb.HardState) error
 
-	Get(index uint64) (pb.HardState, error)
+	Get(index uint64) (*pb.HardState, error)
 
 	SetIndex(minIndex, maxIndex uint64) error
 	GetIndex() (uint64, uint64, error)
@@ -71,7 +71,7 @@ func (store *FakeStorage) GetIndex() (uint64, uint64, error) {
 	return store.minIndex, store.maxIndex, nil
 }
 
-func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {
+func (store *FakeStorage) Get(index uint64) (*pb.HardState, error) {
 	assert(0 < index)
 	if hs, ok := store.table[index]; ok {
 		assert(hs.Index == index)
@@ -79,9 +79,11 @@ func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {
 			hs.Chosen = true
 		}
 
-		return hs, nil
+		return &hs, nil
 	}
-	return pb.HardState{}, errors.New("Not Exist")
+
+	// don't treat not exist as error
+	return nil, nil
 }
 
 type FakeNetwork struct {

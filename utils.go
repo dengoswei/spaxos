@@ -115,7 +115,7 @@ func randSpaxos() *spaxos {
 		groups[idx] = true
 	}
 
-	return NewSpaxos(id, groups)
+	return newSpaxos(id, groups)
 }
 
 func randRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
@@ -219,6 +219,13 @@ func getMsg(
 	}
 
 	return nil, pb.Message{}
+}
+
+func getMsgs(c chan []pb.Message, msgs []pb.Message) chan []pb.Message {
+	if 0 == len(msgs) {
+		return nil
+	}
+	return c
 }
 
 func generateTimeoutMsg(index, id, timestamp uint64) pb.Message {

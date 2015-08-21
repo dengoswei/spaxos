@@ -1,5 +1,40 @@
 package spaxos
 
+import (
+	"encoding/json"
+	"io/ioutil"
+)
+
+type GroupEntry struct {
+	Id   uint64 `json:id`
+	Ip   string `json:ip`
+	Port int    `json:port`
+}
+
+type Config struct {
+	Selfid uint64       `json:selfid`
+	Groups []GroupEntry `json:groups`
+}
+
+func (c *Config) GetGroupIds() map[uint64]bool {
+	groups := make(map[uint64]bool)
+	for _, entry := range c.Groups {
+		assert(0 < entry.Id)
+		groups[entry.Id] = true
+	}
+	return groups
+}
+
+func (c *Config) GetEntry(id uint64) GroupEntry {
+	for _, entry := range c.Groups {
+		if id == entry.Id {
+			return entry
+		}
+	}
+	assert(false)
+	return GroupEntry{}
+}
+
 type SpaxosLog struct {
 	sp  *spaxos
 	db  Storager
@@ -7,6 +42,81 @@ type SpaxosLog struct {
 
 	minIndex uint64
 	maxIndex uint64
+}
+
+func ReadConfig(configFile string) (*Config, error) {
+
+	content, err := ioutil.ReadFile(configFile)
+	if nil != err {
+		return nil, err
+	}
+
+	c := &Config{}
+	err = json.Unmarshal(content, c)
+	if nil != err {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func NewSpaxosLog(configFile string) (*SpaxosLog, error) {
+
+	slog := &SpaxosLog{}
+
+	c, err := ReadConfig(configFile)
+	if nil != err {
+		return nil, err
+	}
+
+	id := c.Selfid
+	groups := c.GetGroupIds()
+	// build db Storager
+	{
+		db := NewFakeStorage()
+		assert(nil != db)
+		slog.db = db
+	}
+
+	// build net
+	{
+		net := NewFakeNetwork(id)
+		assert(nil != net)
+		slog.net = net
+	}
+
+	// init sp
+	{
+		sp := newSpaxos(id, groups)
+		assert(nil != sp)
+
+		err := sp.init(slog.db)
+		if nil != err {
+			return nil, err
+		}
+
+		slog.sp = sp
+		slog.minIndex = sp.minIndex
+		slog.maxIndex = sp.maxIndex
+	}
+
+	return slog, nil
+}
+
+func (slog *SpaxosLog) Run() {
+	assert(nil != slog.sp)
+	assert(nil != slog.db)
+	assert(nil != slog.net)
+
+	go slog.sp.runStateMachine()
+	go slog.sp.runStorage(slog.db)
+	go slog.sp.runNetwork(slog.net)
+	slog.sp.runTick()
+}
+
+func (slog *SpaxosLog) Stop() {
+	assert(nil != slog.sp)
+	slog.sp.Stop()
 }
 
 func (slog *SpaxosLog) Propose(

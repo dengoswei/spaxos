@@ -18,7 +18,7 @@ func TestNewPaxos(t *testing.T) {
 	groups[2] = true
 	groups[3] = true
 
-	sp := NewSpaxos(1, groups)
+	sp := newSpaxos(1, groups)
 	assert(nil != sp)
 	assert(nil != sp.chosenMap)
 	assert(nil != sp.insgroup)
@@ -264,9 +264,10 @@ func TestRunStorage(t *testing.T) {
 
 	newhs, err := db.Get(ins.index)
 	assert(nil == err)
+	assert(nil != newhs)
 	assert(ins.index == newhs.Index)
 	{
-		newins := rebuildSpaxosInstance(newhs)
+		newins := rebuildSpaxosInstance(*newhs)
 		assert(nil != newins)
 		assert(true == ins.Equal(newins))
 	}

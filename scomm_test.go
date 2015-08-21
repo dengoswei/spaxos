@@ -89,6 +89,6 @@ func TestFakeStorage(t *testing.T) {
 
 	newhs, err := store.Get(hs.Index)
 	assert(nil == err)
-	assert(true == hs.AcceptedValue.Equal(newhs.AcceptedValue))
-	assert(true == hs.Equal(&newhs))
+	assert(nil != newhs)
+	assert(true == hs.Equal(newhs))
 }

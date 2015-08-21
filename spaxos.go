@@ -41,10 +41,6 @@ type spaxos struct {
 	// attach: smt & db
 	propc chan pb.Message
 
-	// TODO:
-	// chindexc chan uint64
-	// chosenc  chan []pb.HardState
-
 	// attach: smt & st
 	storec chan storePackage
 
@@ -53,30 +49,9 @@ type spaxos struct {
 
 	// attach: smt & nt
 	recvc chan pb.Message
-
-	// (0, minIndex) ins in allSps, if not,
-	//    => re-build base ond disk hardstate
-	// for index in (0, minIndex), will be a fifo queue
-	// minIndex uint64
-	// maxIndex uint64
-	// pb.Message => index => ins need to re-build base on disk hardstate
-	// fifoIndex []uint64
-	// allSps    map[uint64]*spaxosInstance
-	// mySps map[uint64]*spaxosInstance
-
-	// msg handOn: wait for ins re-build;
-	// handOn map[uint64][]pb.Message
-
-	//	// index -> ins: need re-build
-	//	rebuild []uint64 // rebuild index
-	//	chosen  map[uint64][]byte
-	//	hss     []pb.HardState
-	//	msgs    []pb.Message
-	//
-	//	prevHSS []pb.HardState
 }
 
-func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
+func newSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	assert(0 != id)
 	_, ok := groups[id]
 	assert(true == ok)
@@ -107,6 +82,40 @@ func NewSpaxos(id uint64, groups map[uint64]bool) *spaxos {
 	sp.recvc = make(chan pb.Message)
 
 	return sp
+}
+
+func (sp *spaxos) init(db Storager) error {
+	// init
+	minIndex, maxIndex, err := db.GetIndex()
+	assert(0 <= minIndex)
+	assert(minIndex <= maxIndex)
+	if nil != err {
+		return err
+	}
+
+	sp.minIndex = minIndex
+	sp.maxIndex = maxIndex
+	sp.nextMinIndex = minIndex
+
+	assert(nil != sp.insgroup)
+	for index := sp.minIndex + 1; index <= sp.maxIndex; index++ {
+		hs, err := db.Get(index)
+		if nil != err {
+			return err
+		}
+
+		if nil != hs {
+			assert(index == hs.Index)
+			ins := rebuildSpaxosInstance(*hs)
+			assert(nil != ins)
+			sp.insertAndCheck(ins)
+			if ins.chosen {
+				sp.submitChosen(hs.Index)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (sp *spaxos) Stop() {
@@ -164,12 +173,6 @@ func (sp *spaxos) asMajority(votes map[uint64]bool, cond bool) bool {
 		}
 	}
 	return cnt > total/2
-}
-
-func (sp *spaxos) Run() {
-	// runs state machine
-
-	// TODO
 }
 
 // interface to db
@@ -533,6 +536,8 @@ func (sp *spaxos) runStorage(db Storager) {
 	prevMinIndex := uint64(0)
 	for {
 
+		sendc := getMsgs(sp.sendc, sendingMsgs)
+
 		select {
 		case spkg := <-sp.storec:
 			// deal with spkg
@@ -586,6 +591,7 @@ func (sp *spaxos) runStorage(db Storager) {
 						continue
 					}
 
+					assert(nil != hs)
 					assert(hs.Index == msg.Index)
 					chosenMsg := pb.Message{Type: pb.MsgChosen,
 						Index: msg.Index, From: msg.From, To: msg.To,
@@ -609,7 +615,7 @@ func (sp *spaxos) runStorage(db Storager) {
 				}
 			}
 
-		case sp.sendc <- sendingMsgs:
+		case sendc <- sendingMsgs:
 			// send out msgs
 			sendingMsgs = nil
 
@@ -656,7 +662,8 @@ func (sp *spaxos) runNetwork(net Networker) {
 					sendingMsgs = append(sendingMsgs, msg)
 				}
 			}
-			LogDebug("msgs %d forwardingMsgs %d sendingMsgs %d",
+			LogDebug("%s msgs %d forwardingMsgs %d sendingMsgs %d",
+				GetFunctionName(sp.runNetwork),
 				len(msgs), len(forwardingMsgs), len(sendingMsgs))
 
 		// sending msg only when needed
