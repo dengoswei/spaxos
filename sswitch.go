@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"time"
 
@@ -27,6 +28,7 @@ type SSwitch struct {
 	sendingMsgs []pb.Message
 	recvingMsgs []pb.Message
 
+	stop   chan struct{}
 	done   chan struct{}
 	nsendc chan pb.Message
 	nrecvc chan pb.Message
@@ -36,8 +38,44 @@ type SSwitch struct {
 }
 
 func NewSwitch(c *Config) (*SSwitch, error) {
-	sw := &SSwitch{id: c.Selfid}
-	// TODO
+	sw := &SSwitch{id: c.Selfid, peers: make(map[uint64]peerInfo)}
+
+	// init sw.ln
+	{
+		entry := c.GetEntry(sw.id)
+		assert(sw.id == entry.Id)
+		ln, err := net.Listen(netType,
+			fmt.Sprintf("%s:%d", entry.Ip, entry.Port))
+		if nil != err {
+			return nil, err
+		}
+
+		assert(nil != ln)
+		sw.ln = ln
+	}
+
+	// init sw.peers
+	{
+		groups := c.GetGroupIds()
+		for id, _ := range groups {
+			if sw.id != id {
+				entry := c.GetEntry(id)
+				pinfo := peerInfo{id: id,
+					addr:  fmt.Sprintf("%s:%d", entry.Ip, entry.Port),
+					sendc: make(chan pb.Message)}
+				sw.peers[id] = pinfo
+			}
+		}
+		assert(len(groups) == len(sw.peers)+1)
+	}
+
+	sw.fsendc = make(chan pb.Message)
+	sw.frecvc = make(chan pb.Message)
+	sw.stop = make(chan struct{})
+	sw.done = make(chan struct{})
+	sw.nsendc = make(chan pb.Message)
+	sw.nrecvc = make(chan pb.Message)
+
 	return sw, nil
 }
 
@@ -47,6 +85,22 @@ func (sw *SSwitch) GetSendChan() chan pb.Message {
 
 func (sw *SSwitch) GetRecvChan() chan pb.Message {
 	return sw.frecvc
+}
+
+func (sw *SSwitch) Stop() {
+	select {
+	case sw.stop <- struct{}{}:
+	case <-sw.done:
+		return
+	}
+
+	<-sw.done
+}
+
+func (sw *SSwitch) Run() {
+	go sw.runSendNetworkMsg()
+	go sw.runRecvNetworkMsg()
+	sw.runSwitch()
 }
 
 func (sw *SSwitch) handleNetworkConnection(conn net.Conn) {
@@ -249,6 +303,32 @@ func (sw *SSwitch) runSendNetworkMsg() {
 	}
 }
 
-func (sw *SSwitch) Run() {
-	// TODO
+func (sw *SSwitch) runSwitch() {
+	for {
+		nsendc, smsg := getMsg(sw.nsendc, sw.sendingMsgs)
+		frecvc, rmsg := getMsg(sw.frecvc, sw.recvingMsgs)
+
+		select {
+		case nsendc <- smsg:
+			sw.sendingMsgs = sw.sendingMsgs[1:]
+		case frecvc <- rmsg:
+			sw.recvingMsgs = sw.recvingMsgs[1:]
+
+		case msg := <-sw.fsendc:
+			assert(sw.id == msg.From)
+			sw.sendingMsgs = append(sw.sendingMsgs, msg)
+
+		case msg := <-sw.nrecvc:
+			if sw.id == msg.To {
+				sw.recvingMsgs = append(sw.recvingMsgs, msg)
+			} else {
+				LogDebug("%s ignore recving msg %v",
+					GetCurrentFuncName(), msg)
+			}
+
+		case <-sw.stop:
+			close(sw.done)
+			return
+		}
+	}
 }

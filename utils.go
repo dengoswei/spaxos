@@ -15,6 +15,8 @@ var log = logging.MustGetLogger("spaxos")
 
 var rd *rand.Rand
 
+const defaultConfig = "./config.json"
+
 func assert(cond bool) {
 	hassert(cond, "assert failed")
 }
@@ -31,6 +33,13 @@ func LogDebug(format string, args ...interface{}) {
 
 func LogErr(format string, args ...interface{}) {
 	log.Error(format, args...)
+}
+
+func NewDefaultConfig() *Config {
+	c, err := ReadConfig(defaultConfig)
+	hassert(nil == err, "ReadConfig %s", err)
+	assert(nil != c)
+	return c
 }
 
 func MaxUint64(a, b uint64) uint64 {

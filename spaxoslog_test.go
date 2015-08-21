@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const configFile = "./config.json"
-
 func TestGroupEntry(t *testing.T) {
 	printIndicate()
 
@@ -29,11 +27,7 @@ func TestGroupEntry(t *testing.T) {
 func TestReadConfig(t *testing.T) {
 	printIndicate()
 
-	c, err := ReadConfig(configFile)
-	if nil != err {
-		fmt.Println("%s", err)
-	}
-	assert(nil == err)
+	c := NewDefaultConfig()
 	fmt.Printf("%d %v\n", len(c.Groups), c)
 
 	assert(0 < c.Selfid)
@@ -46,8 +40,7 @@ func TestReadConfig(t *testing.T) {
 func TestNewSpaxosLog(t *testing.T) {
 	printIndicate()
 
-	c, err := ReadConfig(configFile)
-	assert(nil == err)
+	c := NewDefaultConfig()
 	assert(nil != c)
 	db := NewFakeStorage()
 	assert(nil != db)
@@ -60,8 +53,7 @@ func TestNewSpaxosLog(t *testing.T) {
 func TestSpaxosLogRunAndStop(t *testing.T) {
 	printIndicate()
 
-	c, err := ReadConfig(configFile)
-	assert(nil == err)
+	c := NewDefaultConfig()
 	assert(nil != c)
 	db := NewFakeStorage()
 	assert(nil != db)
