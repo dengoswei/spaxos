@@ -27,7 +27,12 @@
 
 
      - stepChosen:
-       spaxos instance in chosen state will ignore all msg, and response with MsgChosen(non-broadcast);
+       - spaxos instance in chosen state will ignore all msg, and response with MsgChosen(non-broadcast);
+       - once spaxos instace became chosen, it will try to broadcast a pb.MsgChosen msg;
 
-
-
+     - catch up:
+       - front-end issue pb.MsgTryCatchUp;
+       - spaxos: 
+         - for index in (nextMinIndex, min(nextMinIndex+11, maxIndex)), but not yet have corresponding spaxos instance: create a empty spaxos instance, and try to issue a broadcast pb.MsgCatchUp req;
+         - for index already in insgroup, the catch up procedure is relayed on timeout setting;
+       - spaxos instance: only response pb.MsgCatchUp req if ins is masked as chosen;

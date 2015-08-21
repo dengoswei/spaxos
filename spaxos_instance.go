@@ -120,11 +120,14 @@ func (ins *spaxosInstance) Propose(
 		ins.proposingValue = proposingValue
 	}
 
+	// never proposing nil value
+	// => no-op propose don't use this function
+	assert(nil != proposingValue)
 	// TODO: master propose: skip prepare phase
-	ins.beginPreparePhase(sp)
+	ins.beginPreparePhase(sp, false)
 }
 
-func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
+func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 	assert(nil != sp)
 	if ins.chosen {
 		ins.markChosen(sp, false)
@@ -145,6 +148,14 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 		rsp := ins.updatePromised(req)
 		assert(false == rsp.Reject)
 		assert(0 == rsp.From)
+		// step promised: update
+		if ins.maxAcceptedHintNum < rsp.Entry.AccptNum {
+			LogDebug("%s update maxAcceptedHintNum %d -> %d",
+				GetFunctionName(ins.beginPreparePhase),
+				ins.maxAcceptedHintNum, rsp.Entry.AccptNum)
+			ins.maxAcceptedHintNum = rsp.Entry.AccptNum
+			ins.proposingValue = rsp.Entry.Value
+		}
 	}
 
 	ins.rspVotes = make(map[uint64]bool)
@@ -152,11 +163,13 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos) {
 	ins.maxProposedNum = nextProposeNum
 	ins.stepProposer = ins.stepPrepareRsp
 
-	sp.appendMsg(req)
+	if !dropReq {
+		sp.appendMsg(req)
+	}
 	sp.appendHardState(ins.getHardState())
 }
 
-func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
+func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos, dropReq bool) {
 	assert(nil != sp)
 	if ins.chosen {
 		ins.markChosen(sp, false)
@@ -177,7 +190,7 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 			// reject by self
 			// => backoff to beginPreparePhase
 			// NOTE: this may cause live lock
-			ins.beginPreparePhase(sp)
+			ins.beginPreparePhase(sp, false)
 			return
 		}
 
@@ -189,7 +202,9 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos) {
 	ins.rspVotes[sp.id] = true
 	ins.stepProposer = ins.stepAcceptRsp
 
-	sp.appendMsg(req)
+	if !dropReq {
+		sp.appendMsg(req)
+	}
 	sp.appendHardState(ins.getHardState())
 }
 
@@ -197,8 +212,9 @@ func (ins *spaxosInstance) markChosen(sp *spaxos, broadcast bool) {
 	assert(nil != sp)
 
 	ins.chosen = true
+	ins.rspVotes = nil
 	sp.submitChosen(ins.index)
-	ins.stepProposer = ins.stepChosen
+	ins.stepProposer = nil
 	if broadcast {
 		req := pb.Message{
 			Type:  pb.MsgChosen,
@@ -214,7 +230,7 @@ func (ins *spaxosInstance) stepPrepareRsp(
 	assert(ins.index == msg.Index)
 	if pb.MsgTimeOut == msg.Type {
 		// timeout happen: act as if reject by major ?
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 		return
 	}
 
@@ -242,9 +258,9 @@ func (ins *spaxosInstance) stepPrepareRsp(
 	}
 
 	if promisedByMajority(sp, ins.rspVotes) {
-		ins.beginAcceptPhase(sp)
+		ins.beginAcceptPhase(sp, false)
 	} else if rejectedByMajority(sp, ins.rspVotes) {
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 	}
 }
 
@@ -253,7 +269,7 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	assert(ins.index == msg.Index)
 	if pb.MsgTimeOut == msg.Type {
 		// timeout happen: redo beginAccepted ?
-		ins.beginAcceptPhase(sp)
+		ins.beginAcceptPhase(sp, false)
 		return
 	}
 
@@ -274,7 +290,7 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	if acceptedByMajority(sp, ins.rspVotes) {
 		ins.markChosen(sp, true)
 	} else if rejectedByMajority(sp, ins.rspVotes) {
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 	}
 }
 
@@ -293,8 +309,20 @@ func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 		sp.appendMsg(chosenMsg)
 	default:
 		// ignore ?
-		LogDebug("stepChosen msg %v", msg)
+		LogDebug("%s msg %v", GetFunctionName(ins.stepChosen), msg)
 	}
+}
+
+func (ins *spaxosInstance) stepTryCatchUp(sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(msg.Index == ins.index)
+	assert(false == ins.chosen)
+
+	// broadcast msg
+	catchReq := pb.Message{
+		Type:  pb.MsgCatchUp,
+		Index: ins.index, From: sp.id, To: 0}
+	sp.appendMsg(catchReq)
 }
 
 func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
@@ -307,13 +335,34 @@ func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
 		return
 	}
 
+	if ins.chosen {
+		ins.stepChosen(sp, msg)
+		return
+	}
+
 	switch msg.Type {
+	case pb.MsgTryCatchUp:
+		ins.stepTryCatchUp(sp, msg)
+
+	case pb.MsgChosen:
+		ins.beginPreparePhase(sp, true)
+		ins.maxAcceptedHintNum = 0
+		ins.proposingValue = msg.Entry.Value
+		ins.beginAcceptPhase(sp, true)
+		assert(ins.acceptedNum == ins.promisedNum)
+		assert(ins.acceptedNum == ins.maxProposedNum)
+		assert(true == ins.acceptedValue.Equal(msg.Entry.Value))
+		ins.markChosen(sp, false)
+
 	case pb.MsgProp, pb.MsgAccpt:
 		// step Acceptor don't need to deal with timeout msg
 		ins.stepAcceptor(sp, msg)
 
 	case pb.MsgPropResp, pb.MsgAccptResp, pb.MsgTimeOut:
 		ins.stepProposer(sp, msg)
+	default:
+		LogDebug("%s ignore msg %v", GetFunctionName(ins.step), msg)
+		return
 	}
 
 	prevTimeout := ins.timeoutAt

@@ -176,7 +176,7 @@ func TestStepAcceptor(t *testing.T) {
 			remoteIns.acceptedNum = 0
 			remoteIns.acceptedValue = nil
 
-			ins.beginPreparePhase(sp)
+			ins.beginPreparePhase(sp, false)
 			propMsg := sp.outMsgs[0]
 			propMsg.To = remoteSp.id
 			remoteIns.stepAcceptor(remoteSp, propMsg)
@@ -198,7 +198,7 @@ func TestStepAcceptor(t *testing.T) {
 
 		// accept
 		{
-			ins.beginAcceptPhase(sp)
+			ins.beginAcceptPhase(sp, false)
 			accptMsg := sp.outMsgs[0]
 			accptMsg.To = remoteSp.id
 			assert(pb.MsgAccpt == accptMsg.Type)
@@ -233,7 +233,7 @@ func TestBeginPreparePhase(t *testing.T) {
 		ins.chosen = false
 		ins.proposingValue = randPropItem()
 		assert(nil != ins.proposingValue)
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 		// check ins stat
 		assert(ins.maxProposedNum == ins.promisedNum)
 
@@ -264,7 +264,7 @@ func TestBeginPreparePhase(t *testing.T) {
 
 		ins.chosen = true
 		ins.proposingValue = ins.acceptedValue
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 		assert(0 == len(sp.outMsgs))
 		assert(0 == len(sp.outHardStates))
 		// TODO: check sp chosen queue
@@ -283,7 +283,7 @@ func TestBeginAcceptPhase(t *testing.T) {
 
 		ins.chosen = true
 		ins.proposingValue = ins.acceptedValue
-		ins.beginAcceptPhase(sp)
+		ins.beginAcceptPhase(sp, false)
 		assert(0 == len(sp.outMsgs))
 		assert(0 == len(sp.outHardStates))
 	}
@@ -299,8 +299,8 @@ func TestBeginAcceptPhase(t *testing.T) {
 		ins.proposingValue = randPropItem()
 		assert(nil != ins.proposingValue)
 		// setting up: proposedNum, promiseNum
-		ins.beginPreparePhase(sp)
-		ins.beginAcceptPhase(sp)
+		ins.beginPreparePhase(sp, false)
+		ins.beginAcceptPhase(sp, false)
 
 		// check ins stat
 		assert(ins.maxProposedNum == ins.promisedNum)
@@ -339,6 +339,8 @@ func TestPropose(t *testing.T) {
 
 		ins.chosen = false
 		proposingValue := randPropItem()
+		ins.acceptedNum = 0
+		ins.acceptedValue = nil
 		assert(nil != proposingValue)
 		ins.Propose(sp, proposingValue, false)
 
@@ -431,7 +433,7 @@ func TestMarkChosen(t *testing.T) {
 func helpMajorPromised(sp *spaxos, ins *spaxosInstance) {
 	ins.chosen = false
 	ins.proposingValue = ins.acceptedValue
-	ins.beginPreparePhase(sp)
+	ins.beginPreparePhase(sp, false)
 	assert(1 == len(sp.outMsgs))
 	assert(1 == len(sp.outHardStates))
 	sp.outMsgs = nil
@@ -451,7 +453,7 @@ func helpMajorPromised(sp *spaxos, ins *spaxosInstance) {
 func helpMajorRejected(sp *spaxos, ins *spaxosInstance) {
 	ins.chosen = false
 	ins.proposingValue = ins.acceptedValue
-	ins.beginPreparePhase(sp)
+	ins.beginPreparePhase(sp, false)
 	sp.outMsgs = nil
 	sp.outHardStates = nil
 

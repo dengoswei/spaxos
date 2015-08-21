@@ -2,10 +2,13 @@ package spaxos
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	pb "spaxos/spaxospb"
 )
+
+var _ = fmt.Println
 
 func TestNewPaxos(t *testing.T) {
 	printIndicate()
@@ -235,7 +238,7 @@ func TestRunStorage(t *testing.T) {
 	ins.chosen = false
 	ins.proposingValue = randPropItem()
 	{
-		ins.beginPreparePhase(sp)
+		ins.beginPreparePhase(sp, false)
 		assert(1 == len(sp.outMsgs))
 		assert(1 == len(sp.outHardStates))
 

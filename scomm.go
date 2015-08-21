@@ -11,6 +11,7 @@ const MaxNodeID uint64 = 1024
 type storePackage struct {
 	// chosenIndex: mark all index below as chosen!
 	minIndex      uint64
+	maxIndex      uint64
 	outMsgs       []pb.Message
 	outHardStates []pb.HardState
 }
@@ -21,7 +22,8 @@ type Storager interface {
 
 	Get(index uint64) (pb.HardState, error)
 
-	SetMinIndex(index uint64) error
+	SetIndex(minIndex, maxIndex uint64) error
+	GetIndex() (uint64, uint64, error)
 }
 
 // TODO: fix interface func & name!!!
@@ -32,6 +34,7 @@ type Networker interface {
 
 type FakeStorage struct {
 	minIndex uint64
+	maxIndex uint64
 	table    map[uint64]pb.HardState
 }
 
@@ -48,16 +51,24 @@ func (store *FakeStorage) Store(hss []pb.HardState) error {
 	return nil
 }
 
-func (store *FakeStorage) SetMinIndex(index uint64) error {
-	if store.minIndex == index {
-		return errors.New("not less then")
+func (store *FakeStorage) SetIndex(minIndex, maxIndex uint64) error {
+	if minIndex > store.minIndex {
+		store.minIndex = minIndex
+		LogDebug("%s store.minIndex %d minIndex %d",
+			GetFunctionName(store.SetIndex), store.minIndex, minIndex)
 	}
 
-	assert(store.minIndex < index)
-	store.minIndex = index
-	LogDebug("%v store.minIndex %d index %d",
-		store.SetMinIndex, store.minIndex, index)
+	if maxIndex > store.maxIndex {
+		store.maxIndex = maxIndex
+		LogDebug("%s store.maxIndex %d maxIndex %d",
+			GetFunctionName(store.SetIndex), store.maxIndex, maxIndex)
+	}
+
 	return nil
+}
+
+func (store *FakeStorage) GetIndex() (uint64, uint64, error) {
+	return store.minIndex, store.maxIndex, nil
 }
 
 func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {

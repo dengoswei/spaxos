@@ -23,12 +23,20 @@ enum MessageType {
     MsgAccpt            = 4;
     MsgAccptResp        = 5;
 
+    // # ask spaxos status
+    MsgStatus         = 6;
+    MsgStatusResp     = 7;
+
+    // # catch up
+    MsgCatchUp        = 8;
+
     // # TODO
     // internal msg type : drive
     MsgTimeOut          = 10;
     MsgMajorReject      = 11;
     MsgCliProp          = 12;
     MsgMCliProp         = 13;
+    MsgTryCatchUp       = 14;
 
     MsgUpdateMinIndex   = 22;
     MsgReadChosen       = 23;
@@ -67,15 +75,9 @@ message HardState {
     // [(gogoproto.nullable) = false];
 }
 
-//message ProposeValue {
-//    required uint64         reqid    = 1 [(gogoproto.nullable) = false];
-//    required bytes          value    = 2;
-//}
-
 message ProposeItem {
     required uint64  reqid = 1 [(gogoproto.nullable) = false];
     repeated bytes   values = 2;
-    //repeated ProposeValue   values   = 1 [(gogoproto.nullable) = false];   
 }
 
 

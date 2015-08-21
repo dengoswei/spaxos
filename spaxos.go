@@ -1,10 +1,14 @@
 package spaxos
 
 import (
-	//	"errors"
+	"errors"
 	"time"
 
 	pb "spaxos/spaxospb"
+)
+
+var (
+	ErrStopped = errors.New("spaxos: stopped")
 )
 
 type spaxos struct {
@@ -193,7 +197,9 @@ func (sp *spaxos) multiPropose(
 		Entry: pb.PaxosEntry{Value: pitem}}
 	select {
 	case sp.propc <- propMsg:
-		// TODO: add timeout ?
+		LogDebug("%s msg %v", GetFunctionName(sp.multiPropose), propMsg)
+	case <-sp.done:
+		return ErrStopped
 	}
 
 	return nil
@@ -203,14 +209,26 @@ func (sp *spaxos) propose(reqid uint64, value []byte, asMaster bool) error {
 	return sp.multiPropose(reqid, [][]byte{value}, asMaster)
 }
 
+func (sp *spaxos) tryCatchUp() error {
+	catchUpMsg := pb.Message{
+		Type: pb.MsgTryCatchUp, From: sp.id, To: sp.id}
+	select {
+	case sp.recvc <- catchUpMsg:
+		LogDebug("%s msg %v", GetFunctionName(sp.tryCatchUp), catchUpMsg)
+	case <-sp.done:
+		return ErrStopped
+	}
+	return nil
+}
+
 func (sp *spaxos) getStorePackage() (chan storePackage, storePackage) {
 	if nil == sp.outMsgs && nil == sp.outHardStates {
 		return nil, storePackage{}
 	}
 
 	return sp.storec, storePackage{
-		minIndex: sp.nextMinIndex,
-		outMsgs:  sp.outMsgs, outHardStates: sp.outHardStates}
+		minIndex: sp.nextMinIndex, maxIndex: sp.maxIndex,
+		outMsgs: sp.outMsgs, outHardStates: sp.outHardStates}
 }
 
 // State Machine Threaed
@@ -313,13 +331,88 @@ func (sp *spaxos) updateMinIndex(newMinIndex uint64) {
 	assert(sp.minIndex == newMinIndex)
 }
 
+func (sp *spaxos) doTryCatchUp(msg pb.Message) {
+	assert(sp.id == msg.To)
+	const catchUpStep = 10
+
+	assert(sp.minIndex <= sp.maxIndex)
+	for i := 0; i < catchUpStep; i++ {
+		catchIndex := sp.minIndex + uint64(i+1)
+		if catchIndex > sp.maxIndex {
+			break
+		}
+
+		if _, ok := sp.insgroup[catchIndex]; ok {
+			continue
+		}
+
+		// catchIndex don't have spaxos instance yet
+		catchIns := sp.getSpaxosInstance(catchIndex)
+		assert(nil != catchIns)
+		// => create a new spaxos instance for catchIndex
+
+		msg.Index = catchIndex
+		catchIns.step(sp, msg)
+	}
+
+	// use heartbeat msg: ask for
+	if sp.maxIndex-sp.minIndex == 0 {
+		// most recent
+		heartBeatMsg := pb.Message{Type: pb.MsgBeat, From: sp.id, To: 0}
+		sp.appendMsg(heartBeatMsg)
+	}
+}
+
+func (sp *spaxos) updateStatus(msg pb.Message) {
+	assert(sp.id == msg.To)
+
+	// updateStatus: only deal with maxIndex for now!
+	switch msg.Type {
+	case pb.MsgStatus:
+		// ask for msg status
+		statusMsg := pb.Message{Type: pb.MsgStatusResp,
+			Index: sp.maxIndex, From: sp.id, To: msg.From}
+		sp.appendMsg(statusMsg)
+	case pb.MsgStatusResp:
+		peerMaxIndex := msg.Index
+		if sp.maxIndex < peerMaxIndex {
+			LogDebug("%s update maxIndex %d to %d",
+				GetFunctionName(sp.updateStatus),
+				sp.maxIndex, peerMaxIndex)
+			sp.maxIndex = peerMaxIndex
+		}
+	default:
+		assert(false)
+	}
+}
+
+func (sp *spaxos) stepUtiltyMsg(msg pb.Message) {
+	assert(sp.id == msg.To)
+	switch msg.Type {
+	case pb.MsgUpdateMinIndex:
+		sp.updateMinIndex(msg.Index)
+	case pb.MsgTryCatchUp:
+		sp.doTryCatchUp(msg)
+	case pb.MsgBeat:
+		sp.updateStatus(msg)
+	default:
+		assert(false)
+	}
+	return
+}
+
 func (sp *spaxos) step(msg pb.Message) {
 	assert(0 != msg.Index)
 	assert(sp.id == msg.To)
 
-	if pb.MsgUpdateMinIndex == msg.Type {
-		sp.updateMinIndex(msg.Index)
+	switch msg.Type {
+	case pb.MsgUpdateMinIndex, pb.MsgCatchUp:
+		fallthrough
+	case pb.MsgStatus, pb.MsgStatusResp:
+		sp.stepUtiltyMsg(msg)
 		return
+	// TODO
+	default:
 	}
 
 	// get ins by index
@@ -437,6 +530,7 @@ func (sp *spaxos) runStorage(db Storager) {
 	assert(nil != db)
 
 	var sendingMsgs []pb.Message
+	prevMinIndex := uint64(0)
 	for {
 
 		select {
@@ -470,13 +564,14 @@ func (sp *spaxos) runStorage(db Storager) {
 
 			// tell runStateMachine to update minIndex
 			if false == dropMsgs {
-				err := db.SetMinIndex(spkg.minIndex)
-				if nil == err {
+				err := db.SetIndex(spkg.minIndex, spkg.maxIndex)
+				if nil == err && prevMinIndex != spkg.minIndex {
 					indexMsg := pb.Message{
 						Type: pb.MsgUpdateMinIndex, Index: spkg.minIndex,
 						From: sp.id, To: sp.id}
 					sendingMsgs = append(sendingMsgs, indexMsg)
 				}
+				prevMinIndex = spkg.minIndex
 			}
 
 			// generate broad-cast msg if needed

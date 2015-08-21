@@ -42,12 +42,18 @@ const (
 	// # Accpt
 	MsgAccpt     MessageType = 4
 	MsgAccptResp MessageType = 5
+	// # ask spaxos status
+	MsgStatus     MessageType = 6
+	MsgStatusResp MessageType = 7
+	// # catch up
+	MsgCatchUp MessageType = 8
 	// # TODO
 	// internal msg type : drive
 	MsgTimeOut        MessageType = 10
 	MsgMajorReject    MessageType = 11
 	MsgCliProp        MessageType = 12
 	MsgMCliProp       MessageType = 13
+	MsgTryCatchUp     MessageType = 14
 	MsgUpdateMinIndex MessageType = 22
 	MsgReadChosen     MessageType = 23
 	MsgChosen         MessageType = 30
@@ -61,10 +67,14 @@ var MessageType_name = map[int32]string{
 	3:   "MsgPropResp",
 	4:   "MsgAccpt",
 	5:   "MsgAccptResp",
+	6:   "MsgStatus",
+	7:   "MsgStatusResp",
+	8:   "MsgCatchUp",
 	10:  "MsgTimeOut",
 	11:  "MsgMajorReject",
 	12:  "MsgCliProp",
 	13:  "MsgMCliProp",
+	14:  "MsgTryCatchUp",
 	22:  "MsgUpdateMinIndex",
 	23:  "MsgReadChosen",
 	30:  "MsgChosen",
@@ -77,10 +87,14 @@ var MessageType_value = map[string]int32{
 	"MsgPropResp":       3,
 	"MsgAccpt":          4,
 	"MsgAccptResp":      5,
+	"MsgStatus":         6,
+	"MsgStatusResp":     7,
+	"MsgCatchUp":        8,
 	"MsgTimeOut":        10,
 	"MsgMajorReject":    11,
 	"MsgCliProp":        12,
 	"MsgMCliProp":       13,
+	"MsgTryCatchUp":     14,
 	"MsgUpdateMinIndex": 22,
 	"MsgReadChosen":     23,
 	"MsgChosen":         30,

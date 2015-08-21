@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/op/go-logging"
 	"math/rand"
+	"reflect"
 	"runtime"
 	"time"
 
@@ -183,6 +184,10 @@ func randPropValue(cnt int) (uint64, [][]byte) {
 	}
 
 	return reqid, values
+}
+
+func GetFunctionName(f interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }
 
 func printIndicate() {
