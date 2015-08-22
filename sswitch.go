@@ -38,8 +38,8 @@ type SSwitch struct {
 }
 
 func NewSwitch(c *Config) (*SSwitch, error) {
-	sw := &SSwitch{id: c.Selfid, peers: make(map[uint64]peerInfo)}
 
+	sw := &SSwitch{id: c.Selfid, peers: make(map[uint64]peerInfo)}
 	// init sw.ln
 	{
 		entry := c.GetEntry(sw.id)
@@ -95,6 +95,7 @@ func (sw *SSwitch) Stop() {
 	}
 
 	<-sw.done
+	sw.ln.Close()
 }
 
 func (sw *SSwitch) Run() {
@@ -176,6 +177,12 @@ func (sw *SSwitch) runRecvNetworkMsg() {
 			// log and ignore
 			LogErr("%s Accept %s err %s",
 				GetFunctionName(sw.runRecvNetworkMsg), conn, err)
+
+			select {
+			case <-sw.done:
+				return
+			default:
+			}
 			continue
 		}
 

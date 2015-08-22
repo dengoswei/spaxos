@@ -1,98 +1,38 @@
 package spaxos
 
 import (
-	"encoding/json"
-	"io/ioutil"
+//	"encoding/json"
+//	"io/ioutil"
 )
-
-type GroupEntry struct {
-	Id   uint64 `json:id`
-	Ip   string `json:ip`
-	Port int    `json:port`
-}
-
-type Config struct {
-	Selfid uint64       `json:selfid`
-	Groups []GroupEntry `json:groups`
-}
-
-func (c *Config) GetGroupIds() map[uint64]bool {
-	groups := make(map[uint64]bool)
-	for _, entry := range c.Groups {
-		assert(0 < entry.Id)
-		groups[entry.Id] = true
-	}
-	return groups
-}
-
-func (c *Config) GetEntry(id uint64) GroupEntry {
-	for _, entry := range c.Groups {
-		if id == entry.Id {
-			return entry
-		}
-	}
-	assert(false)
-	return GroupEntry{}
-}
 
 type SpaxosLog struct {
 	sp *spaxos
 	db Storager
-	sw Switcher
 
 	minIndex uint64
 	maxIndex uint64
 }
 
-func ReadConfig(configFile string) (*Config, error) {
-
-	content, err := ioutil.ReadFile(configFile)
+func NewSpaxosLog(c *Config, db Storager) (*SpaxosLog, error) {
+	assert(nil != c)
+	sp, err := newSpaxos(c, db)
 	if nil != err {
 		return nil, err
 	}
 
-	c := &Config{}
-	err = json.Unmarshal(content, c)
-	if nil != err {
-		return nil, err
-	}
-
-	return c, nil
+	assert(nil != sp)
+	return &SpaxosLog{sp: sp, db: db,
+		minIndex: sp.minIndex, maxIndex: sp.maxIndex}, nil
 }
 
-func NewSpaxosLog(c *Config, db Storager, sw Switcher) (*SpaxosLog, error) {
-
-	slog := &SpaxosLog{db: db, sw: sw}
-
-	// init sp
-	{
-		id := c.Selfid
-		groups := c.GetGroupIds()
-
-		sp := newSpaxos(id, groups)
-		assert(nil != sp)
-
-		err := sp.init(slog.db)
-		if nil != err {
-			return nil, err
-		}
-
-		slog.sp = sp
-		slog.minIndex = sp.minIndex
-		slog.maxIndex = sp.maxIndex
-	}
-
-	return slog, nil
-}
-
-func (slog *SpaxosLog) Run() {
+func (slog *SpaxosLog) Run(sw Switcher) {
 	assert(nil != slog.sp)
 	assert(nil != slog.db)
-	assert(nil != slog.sw)
+	assert(nil != sw)
 
 	go slog.sp.runStateMachine()
 	go slog.sp.runStorage(slog.db)
-	go slog.sp.runSwitch(slog.sw)
+	go slog.sp.runSwitch(sw)
 	slog.sp.runTick()
 }
 

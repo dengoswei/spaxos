@@ -1,6 +1,9 @@
 package spaxos
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	pb "spaxos/spaxospb"
@@ -89,6 +92,39 @@ func TestFakeStorage(t *testing.T) {
 
 	newhs, err := store.Get(hs.Index)
 	assert(nil == err)
-	assert(nil != newhs)
-	assert(true == hs.Equal(newhs))
+	assert(true == hs.Equal(&newhs))
+
+	newhs, err = store.Get(hs.Index + 1)
+	assert(nil != err)
+	assert(err == IndexNotExist)
+	assert(0 == newhs.Index)
+}
+
+func TestGroupEntry(t *testing.T) {
+	printIndicate()
+
+	entry := &GroupEntry{Id: 1, Ip: "127.0.0.1", Port: 10001}
+	s, err := json.Marshal(entry)
+	assert(nil == err)
+	os.Stdout.Write(s)
+	println()
+
+	conststr := `{"id": 1, "ip": "127.0.0.1", "port": 10001}`
+	newentry := &GroupEntry{}
+	err = json.Unmarshal([]byte(conststr), newentry)
+	assert(nil == err)
+	fmt.Printf("%v\n", newentry)
+}
+
+func TestReadConfig(t *testing.T) {
+	printIndicate()
+
+	c := NewDefaultConfig()
+	fmt.Printf("%d %v\n", len(c.Groups), c)
+
+	assert(0 < c.Selfid)
+	groups := c.GetGroupIds()
+	assert(len(groups) == len(c.Groups))
+	entry := c.GetEntry(c.Selfid)
+	assert(c.Selfid == entry.Id)
 }

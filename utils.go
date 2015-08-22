@@ -15,8 +15,6 @@ var log = logging.MustGetLogger("spaxos")
 
 var rd *rand.Rand
 
-const defaultConfig = "./config.json"
-
 func assert(cond bool) {
 	hassert(cond, "assert failed")
 }
@@ -33,13 +31,6 @@ func LogDebug(format string, args ...interface{}) {
 
 func LogErr(format string, args ...interface{}) {
 	log.Error(format, args...)
-}
-
-func NewDefaultConfig() *Config {
-	c, err := ReadConfig(defaultConfig)
-	hassert(nil == err, "ReadConfig %s", err)
-	assert(nil != c)
-	return c
 }
 
 func MaxUint64(a, b uint64) uint64 {
@@ -117,14 +108,16 @@ func randSpaxosInstance() *spaxosInstance {
 }
 
 func randSpaxos() *spaxos {
-	const groupCnt = uint64(9)
-	id := uint64(rd.Intn(int(groupCnt))) + 1
-	groups := make(map[uint64]bool, groupCnt)
-	for idx := uint64(1); idx <= groupCnt; idx += 1 {
-		groups[idx] = true
-	}
+	c := NewDefaultConfig()
+	assert(nil != c)
 
-	return newSpaxos(id, groups)
+	db := NewFakeStorage()
+	assert(nil != db)
+
+	sp, err := newSpaxos(c, db)
+	assert(nil == err)
+	assert(nil != sp)
+	return sp
 }
 
 func randRspVotes(falseCnt, trueCnt uint64) map[uint64]bool {
@@ -193,6 +186,10 @@ func randPropValue(cnt int) (uint64, [][]byte) {
 	}
 
 	return reqid, values
+}
+
+func randTestPort() int {
+	return 20000 + rand.Intn(100)
 }
 
 func GetFunctionName(f interface{}) string {

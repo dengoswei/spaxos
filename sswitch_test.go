@@ -10,17 +10,16 @@ import (
 func TestNewSwitch(t *testing.T) {
 	printIndicate()
 
-	c := NewDefaultConfig()
-	assert(nil != c)
-
-	sw, err := NewSwitch(c)
-	assert(nil == err)
-	assert(nil != sw)
-	assert(nil != sw.GetSendChan())
-	assert(nil != sw.GetRecvChan())
-
 	// test run and stop
 	{
+		c := NewTestConfig()
+		assert(nil != c)
+		sw, err := NewSwitch(c)
+		assert(nil == err)
+		assert(nil != sw)
+		assert(nil != sw.GetSendChan())
+		assert(nil != sw.GetRecvChan())
+
 		go sw.Run()
 		defer sw.Stop()
 		time.Sleep(1 * time.Millisecond)
@@ -28,10 +27,17 @@ func TestNewSwitch(t *testing.T) {
 
 	// simple send and recv
 	{
+		c := NewTestConfig()
+		assert(nil != c)
+		sw, err := NewSwitch(c)
+		hassert(nil == err, "NewSwitch err %s", err)
+		assert(nil != sw)
+
 		go sw.Run()
 		defer sw.Stop()
-		c2 := NewDefaultConfig()
+		c2 := NewTestConfig()
 		assert(nil != c2)
+		c2.Groups = c.Groups
 		c2.Selfid = 2
 		sw2, err := NewSwitch(c2)
 		assert(nil == err)

@@ -21,7 +21,6 @@ type spaxos struct {
 
 	nextMinIndex uint64
 	chosenMap    map[uint64]bool
-	//	chosenItems  map[uint64]pb.HardState
 
 	// index & spaxosInstance
 	maxIndex uint64
@@ -51,71 +50,53 @@ type spaxos struct {
 	recvc chan pb.Message
 }
 
-func newSpaxos(id uint64, groups map[uint64]bool) *spaxos {
-	assert(0 != id)
-	_, ok := groups[id]
-	assert(true == ok)
+func newSpaxos(c *Config, db Storager) (*spaxos, error) {
+	assert(nil != c)
 
-	sp := &spaxos{id: id, groups: groups}
+	sp := &spaxos{
+		id:           c.Selfid,
+		groups:       c.GetGroupIds(),
+		done:         make(chan struct{}),
+		stop:         make(chan struct{}),
+		timeoutQueue: make(map[uint64]map[uint64]*spaxosInstance),
+		tickc:        make(chan struct{}),
+		chosenMap:    make(map[uint64]bool),
+		insgroup:     make(map[uint64]*spaxosInstance),
+		propc:        make(chan pb.Message),
+		storec:       make(chan storePackage),
+		sendc:        make(chan []pb.Message),
+		recvc:        make(chan pb.Message)}
 
-	// signal done
-	sp.done = make(chan struct{})
-	sp.stop = make(chan struct{})
-
-	// timeout
-	sp.timeoutQueue = make(map[uint64]map[uint64]*spaxosInstance)
-	assert(nil != sp.timeoutQueue)
-	sp.tickc = make(chan struct{})
-
-	sp.chosenMap = make(map[uint64]bool)
-	//	sp.chosenItems = make(map[uint64]pb.HardState)
-	sp.insgroup = make(map[uint64]*spaxosInstance)
-	//	sp.rebuildList = make(map[uint64][]pb.Message)
-
-	sp.propc = make(chan pb.Message)
-	// sp.chosenc = make(chan []pb.HardState)
-
-	// TODO
-
-	sp.storec = make(chan storePackage)
-	sp.sendc = make(chan []pb.Message)
-	sp.recvc = make(chan pb.Message)
-
-	return sp
-}
-
-func (sp *spaxos) init(db Storager) error {
-	// init
 	minIndex, maxIndex, err := db.GetIndex()
-	assert(0 <= minIndex)
-	assert(minIndex <= maxIndex)
 	if nil != err {
-		return err
+		return nil, err
 	}
 
 	sp.minIndex = minIndex
 	sp.maxIndex = maxIndex
 	sp.nextMinIndex = minIndex
-
-	assert(nil != sp.insgroup)
+	assert(sp.minIndex <= sp.maxIndex)
 	for index := sp.minIndex + 1; index <= sp.maxIndex; index++ {
 		hs, err := db.Get(index)
 		if nil != err {
-			return err
+			if IndexNotExist == err {
+				continue
+			}
+
+			return nil, err
 		}
 
-		if nil != hs {
-			assert(index == hs.Index)
-			ins := rebuildSpaxosInstance(*hs)
-			assert(nil != ins)
-			sp.insertAndCheck(ins)
-			if ins.chosen {
-				sp.submitChosen(hs.Index)
-			}
+		assert(index == hs.Index)
+		ins := rebuildSpaxosInstance(hs)
+		assert(nil != ins)
+		assert(ins.index == index)
+		sp.insertAndCheck(ins)
+		if ins.chosen {
+			sp.submitChosen(ins.index)
 		}
 	}
 
-	return nil
+	return sp, nil
 }
 
 func (sp *spaxos) Stop() {
@@ -591,7 +572,6 @@ func (sp *spaxos) runStorage(db Storager) {
 						continue
 					}
 
-					assert(nil != hs)
 					assert(hs.Index == msg.Index)
 					chosenMsg := pb.Message{Type: pb.MsgChosen,
 						Index: msg.Index, From: msg.From, To: msg.To,

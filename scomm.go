@@ -1,12 +1,19 @@
 package spaxos
 
 import (
-	// "errors"
+	"encoding/json"
+	"errors"
+	"io/ioutil"
 
 	pb "spaxos/spaxospb"
 )
 
 const MaxNodeID uint64 = 1024
+const defaultConfig = "./config.json"
+
+var (
+	IndexNotExist = errors.New("index not exist")
+)
 
 type storePackage struct {
 	// chosenIndex: mark all index below as chosen!
@@ -20,16 +27,81 @@ type Storager interface {
 	// store hard state
 	Store([]pb.HardState) error
 
-	Get(index uint64) (*pb.HardState, error)
+	Get(index uint64) (pb.HardState, error)
 
 	SetIndex(minIndex, maxIndex uint64) error
 	GetIndex() (uint64, uint64, error)
 }
 
-// TODO: fix interface func & name!!!
 type Switcher interface {
 	GetSendChan() chan pb.Message
 	GetRecvChan() chan pb.Message
+}
+
+type GroupEntry struct {
+	Id   uint64 `json:id`
+	Ip   string `json:ip`
+	Port int    `json:port`
+}
+
+type Config struct {
+	Selfid uint64       `json:selfid`
+	Groups []GroupEntry `json:groups`
+	Path   string       `json:path`
+}
+
+func (c *Config) GetGroupIds() map[uint64]bool {
+	groups := make(map[uint64]bool)
+	for _, entry := range c.Groups {
+		assert(0 < entry.Id)
+		groups[entry.Id] = true
+	}
+	return groups
+}
+
+func (c *Config) GetEntry(id uint64) GroupEntry {
+	for _, entry := range c.Groups {
+		if id == entry.Id {
+			return entry
+		}
+	}
+	assert(false)
+	return GroupEntry{}
+}
+
+func ReadConfig(configFile string) (*Config, error) {
+
+	content, err := ioutil.ReadFile(configFile)
+	if nil != err {
+		return nil, err
+	}
+
+	c := &Config{}
+	err = json.Unmarshal(content, c)
+	if nil != err {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func NewTestConfig() *Config {
+	c := &Config{Selfid: 1, Path: "./test_data",
+		Groups: []GroupEntry{
+			GroupEntry{Id: 1, Ip: "127.0.0.1",
+				Port: randTestPort()},
+			GroupEntry{Id: 2, Ip: "127.0.0.1",
+				Port: randTestPort()},
+			GroupEntry{Id: 3, Ip: "127.0.0.1",
+				Port: randTestPort()}}}
+	return c
+}
+
+func NewDefaultConfig() *Config {
+	c, err := ReadConfig(defaultConfig)
+	hassert(nil == err, "ReadConfig %s", err)
+	assert(nil != c)
+	return c
 }
 
 type FakeStorage struct {
@@ -71,7 +143,7 @@ func (store *FakeStorage) GetIndex() (uint64, uint64, error) {
 	return store.minIndex, store.maxIndex, nil
 }
 
-func (store *FakeStorage) Get(index uint64) (*pb.HardState, error) {
+func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {
 	assert(0 < index)
 	if hs, ok := store.table[index]; ok {
 		assert(hs.Index == index)
@@ -79,11 +151,11 @@ func (store *FakeStorage) Get(index uint64) (*pb.HardState, error) {
 			hs.Chosen = true
 		}
 
-		return &hs, nil
+		return hs, nil
 	}
 
 	// don't treat not exist as error
-	return nil, nil
+	return pb.HardState{}, IndexNotExist
 }
 
 type FakeSwitch struct {
