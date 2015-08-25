@@ -104,8 +104,8 @@ func (slog *SpaxosLog) Get(
 		assert(beginIndex+i == hs.Index)
 		reqids[i] = hs.AcceptedValue.Reqid
 		values[i] = hs.AcceptedValue.Values
-		if 0 != reqids[i] && nil != hostReqidMap {
-			hostReqidMap[reqids[i]] = hs.Index
+		if 0 != hs.HostPropReqid && nil != hostReqidMap {
+			hostReqidMap[hs.HostPropReqid] = hs.Index
 		}
 	}
 

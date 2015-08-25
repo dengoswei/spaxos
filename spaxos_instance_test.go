@@ -19,7 +19,7 @@ func TestNewSpaxosInstance(t *testing.T) {
 	assert(0 == ins.maxAcceptedHintNum)
 	assert(nil == ins.proposingValue)
 	assert(nil == ins.rspVotes)
-	assert(nil == ins.stepProposer)
+	assert(nil != ins.stepProposer)
 	assert(0 == ins.promisedNum)
 	assert(0 == ins.acceptedNum)
 	assert(nil == ins.acceptedValue)

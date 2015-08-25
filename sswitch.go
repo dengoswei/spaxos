@@ -112,14 +112,15 @@ func (sw *SSwitch) handleNetworkConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	assert(nil != reader)
 	for {
-		err := conn.SetReadDeadline(time.Now().Add(2 * time.Millisecond))
-		if nil != err {
-			LogErr("%s conn.SetReadDeadline conn %s err %s",
-				GetCurrentFuncName(), conn, err)
-			return
-		}
+		//		err := conn.SetReadDeadline(time.Now().Add(2 * time.Millisecond))
+		//		if nil != err {
+		//			LogErr("%s conn.SetReadDeadline conn %s err %s",
+		//				GetCurrentFuncName(), conn, err)
+		//			return
+		//		}
 
 		var pkglen int
+		var err error
 		{
 			var totalLen uint32
 			err = binary.Read(reader, binary.BigEndian, &totalLen)
@@ -160,6 +161,8 @@ func (sw *SSwitch) handleNetworkConnection(conn net.Conn) {
 			continue
 		}
 
+		LogDebug("net switch hostid %d recv msg (type %s) %v",
+			sw.id, pb.MessageType_name[int32(msg.Type)], msg)
 		// feed msg into node
 		select {
 		case sw.nrecvc <- msg:
@@ -188,6 +191,7 @@ func (sw *SSwitch) runRecvNetworkMsg() {
 		}
 
 		assert(nil != conn)
+		LogDebug("host %d Accept %s", sw.id, conn.RemoteAddr())
 		go sw.handleNetworkConnection(conn)
 	}
 }
@@ -296,6 +300,8 @@ func (sw *SSwitch) runSendNetworkMsg() {
 	for {
 		select {
 		case smsg := <-sw.nsendc:
+			LogDebug("net switch hostid %d send msg (type %s) %v",
+				sw.id, pb.MessageType_name[int32(smsg.Type)], smsg)
 			if pinfo, ok := sw.peers[smsg.To]; ok {
 				assert(nil != pinfo.sendc)
 				assert(smsg.To == pinfo.id)

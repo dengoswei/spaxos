@@ -29,7 +29,9 @@ type spaxosInstance struct {
 }
 
 func newSpaxosInstance(index uint64) *spaxosInstance {
-	return &spaxosInstance{index: index}
+	ins := &spaxosInstance{index: index}
+	ins.stepProposer = ins.stepPassiveTimeout
+	return ins
 }
 
 func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
@@ -41,6 +43,7 @@ func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 		promisedNum:    hs.MaxPromisedNum,
 		acceptedNum:    hs.MaxAcceptedNum,
 		acceptedValue:  hs.AcceptedValue}
+	ins.stepProposer = ins.stepPassiveTimeout
 	return &ins
 }
 
@@ -304,6 +307,18 @@ func (ins *spaxosInstance) stepAcceptRsp(sp *spaxos, msg pb.Message) {
 	}
 }
 
+func (ins *spaxosInstance) stepPassiveTimeout(sp *spaxos, msg pb.Message) {
+	assert(nil != sp)
+	assert(ins.index == msg.Index)
+
+	assert(false == ins.chosen)
+	assert(0 == ins.hostPropReqid)
+	assert(nil == ins.proposingValue)
+	assert(0 == ins.maxProposedNum)
+	// TODO
+	LogDebug("%s hostid %d msg %v", GetCurrentFuncName(), sp.id, msg)
+}
+
 // TODO: add stepChosen test-case
 func (ins *spaxosInstance) stepChosen(sp *spaxos, msg pb.Message) {
 	assert(nil != sp)
@@ -369,6 +384,7 @@ func (ins *spaxosInstance) step(sp *spaxos, msg pb.Message) {
 		ins.stepAcceptor(sp, msg)
 
 	case pb.MsgPropResp, pb.MsgAccptResp, pb.MsgTimeOut:
+		assert(nil != ins.stepProposer)
 		ins.stepProposer(sp, msg)
 	default:
 		LogDebug("%s ignore msg %v", GetFunctionName(ins.step), msg)

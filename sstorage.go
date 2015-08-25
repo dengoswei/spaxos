@@ -2,6 +2,8 @@ package spaxos
 
 import (
 	"fmt"
+	"path"
+	"strconv"
 
 	"github.com/golang/leveldb"
 	pb "spaxos/spaxospb"
@@ -25,7 +27,8 @@ func NewStorage(c *Config) (*SStorage, error) {
 	assert(nil != c)
 
 	// TODO: using leveldb/memfs ?
-	db, err := leveldb.Open(c.Path, nil)
+	db, err := leveldb.Open(
+		path.Join(c.Path, strconv.FormatUint(c.Selfid, 10)), nil)
 	if nil != err {
 		return nil, err
 	}

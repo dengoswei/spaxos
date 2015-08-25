@@ -31,6 +31,8 @@ type Storager interface {
 
 	SetIndex(minIndex, maxIndex uint64) error
 	GetIndex() (uint64, uint64, error)
+
+	// GetIndexUpdateChan() chan bool
 }
 
 type Switcher interface {
@@ -105,9 +107,10 @@ func NewDefaultConfig() *Config {
 }
 
 type FakeStorage struct {
-	minIndex uint64
-	maxIndex uint64
-	table    map[uint64]pb.HardState
+	minIndex     uint64
+	maxIndex     uint64
+	indexUpdated chan bool
+	table        map[uint64]pb.HardState
 }
 
 func NewFakeStorage() *FakeStorage {
@@ -141,6 +144,10 @@ func (store *FakeStorage) SetIndex(minIndex, maxIndex uint64) error {
 
 func (store *FakeStorage) GetIndex() (uint64, uint64, error) {
 	return store.minIndex, store.maxIndex, nil
+}
+
+func (store *FakeStorage) GetIndexUpdateChan() chan bool {
+	return store.indexUpdated
 }
 
 func (store *FakeStorage) Get(index uint64) (pb.HardState, error) {

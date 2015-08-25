@@ -130,6 +130,8 @@ func (sp *spaxos) submitChosen(index uint64) {
 func (sp *spaxos) appendMsg(msg pb.Message) {
 	assert(sp.id == msg.From)
 	sp.outMsgs = append(sp.outMsgs, msg)
+	LogDebug("appendMsg host id %d msg (type %s) %v",
+		sp.id, pb.MessageType_name[int32(msg.Type)], msg)
 }
 
 func (sp *spaxos) appendHardState(hs pb.HardState) {
@@ -264,11 +266,19 @@ func (sp *spaxos) stepNilSpaxosInstance(msg pb.Message) {
 		return // ignore
 	}
 
-	// readMsg will be process by storage thread
-	readMsg := pb.Message{
-		Type: pb.MsgReadChosen, Index: msg.Index,
-		From: sp.id, To: msg.From}
-	sp.appendMsg(readMsg)
+	switch msg.Type {
+	case pb.MsgProp, pb.MsgAccpt:
+		// readMsg will be process by storage thread
+		readMsg := pb.Message{
+			Type: pb.MsgReadChosen, Index: msg.Index,
+			From: sp.id, To: msg.From}
+		sp.appendMsg(readMsg)
+		return
+	default:
+		LogDebug("%s ignore msg %v", GetCurrentFuncName(), msg)
+	}
+
+	return
 }
 
 func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
@@ -310,7 +320,7 @@ func (sp *spaxos) updateMinIndex(newMinIndex uint64) {
 		delete(sp.insgroup, index)
 		delete(sp.chosenMap, index)
 		sp.minIndex = index
-		LogDebug("updateMinIndex retire index %d", index)
+		LogDebug("updateMinIndex hostid %d retire index %d", sp.id, index)
 	}
 	assert(sp.minIndex == newMinIndex)
 }
@@ -414,6 +424,7 @@ func (sp *spaxos) step(msg pb.Message) {
 		ins.Propose(sp, msg.Entry.Value, pb.MsgMCliProp == msg.Type)
 
 	default:
+		assert(nil != ins)
 		ins.step(sp, msg)
 	}
 }
@@ -438,8 +449,9 @@ func (sp *spaxos) fakeRunStateMachine() {
 }
 
 func (sp *spaxos) allocateIndexNum() uint64 {
-	if 0 == sp.maxIndex {
-		return uint64(1)
+	if 0 == sp.maxIndex ||
+		sp.minIndex == sp.maxIndex {
+		return sp.maxIndex + 1
 	}
 
 	assert(0 < sp.maxIndex)
@@ -565,6 +577,8 @@ func (sp *spaxos) runStorage(db Storager) {
 				outHardStates = nil
 				for _, hs := range mapHardStates {
 					outHardStates = append(outHardStates, hs)
+					LogDebug("store hostid %d hardstate (host reqid %d) %v",
+						sp.id, hs.HostPropReqid, hs)
 				}
 			}
 
