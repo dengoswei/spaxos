@@ -7,8 +7,9 @@ import (
 type stepFunc func(sp *spaxos, msg pb.Message)
 
 type spaxosInstance struct {
-	chosen bool
-	index  uint64
+	chosen        bool
+	index         uint64
+	hostPropReqid uint64
 
 	// proposer
 	maxProposedNum     uint64
@@ -35,6 +36,7 @@ func rebuildSpaxosInstance(hs pb.HardState) *spaxosInstance {
 	ins := spaxosInstance{
 		chosen:         hs.Chosen,
 		index:          hs.Index,
+		hostPropReqid:  hs.HostPropReqid,
 		maxProposedNum: hs.MaxProposedNum,
 		promisedNum:    hs.MaxPromisedNum,
 		acceptedNum:    hs.MaxAcceptedNum,
@@ -46,6 +48,7 @@ func (ins *spaxosInstance) getHardState() pb.HardState {
 	return pb.HardState{
 		Chosen:         ins.chosen,
 		Index:          ins.index,
+		HostPropReqid:  ins.hostPropReqid,
 		MaxProposedNum: ins.maxProposedNum,
 		MaxPromisedNum: ins.promisedNum,
 		MaxAcceptedNum: ins.acceptedNum,
@@ -116,13 +119,20 @@ func (ins *spaxosInstance) stepAcceptor(sp *spaxos, msg pb.Message) {
 func (ins *spaxosInstance) Propose(
 	sp *spaxos, proposingValue *pb.ProposeItem, asMaster bool) {
 	assert(nil != sp)
-	if false == ins.chosen {
-		ins.proposingValue = proposingValue
-	}
+	assert(false == ins.chosen)
 
+	assert(nil == ins.proposingValue)
+	assert(0 == ins.hostPropReqid)
 	// never proposing nil value
 	// => no-op propose don't use this function
 	assert(nil != proposingValue)
+	assert(0 != proposingValue.Reqid)
+	ins.proposingValue = proposingValue
+	ins.hostPropReqid = proposingValue.Reqid
+	//if false == ins.chosen {
+	//	ins.proposingValue = proposingValue
+	//}
+
 	// TODO: master propose: skip prepare phase
 	ins.beginPreparePhase(sp, false)
 }

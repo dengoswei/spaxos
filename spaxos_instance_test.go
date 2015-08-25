@@ -350,23 +350,25 @@ func TestPropose(t *testing.T) {
 	}
 
 	// case 2:
-	{
-		sp := randSpaxos()
-		assert(nil != sp)
-
-		ins := randSpaxosInstance()
-		assert(nil != ins)
-
-		ins.chosen = true
-		ins.proposingValue = ins.acceptedValue
-		proposingValue := randPropItem()
-		assert(nil != proposingValue)
-
-		ins.Propose(sp, proposingValue, false)
-		assert(0 == len(sp.outMsgs))
-		assert(0 == len(sp.outHardStates))
-		assert(false == proposingValue.Equal(ins.proposingValue))
-	}
+	// => never proposing on a local chosen spaxos instance:
+	//    in face: never re-do proposing on one single spaxos instance unless no-op propose;
+	//	{
+	//		sp := randSpaxos()
+	//		assert(nil != sp)
+	//
+	//		ins := randSpaxosInstance()
+	//		assert(nil != ins)
+	//
+	//		ins.chosen = true
+	//		ins.proposingValue = ins.acceptedValue
+	//		proposingValue := randPropItem()
+	//		assert(nil != proposingValue)
+	//
+	//		ins.Propose(sp, proposingValue, false)
+	//		assert(0 == len(sp.outMsgs))
+	//		assert(0 == len(sp.outHardStates))
+	//		assert(false == proposingValue.Equal(ins.proposingValue))
+	//	}
 }
 
 func TestRspVotes(t *testing.T) {

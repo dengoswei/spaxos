@@ -41,6 +41,10 @@ func (slog *SpaxosLog) Stop() {
 	slog.sp.Stop()
 }
 
+// IMPORTANT:
+// 1. only one caller can call Propose at any given time,
+//    in fact, caller shouldn't call Propose when prev caller
+//    still waiting the Proposing result;
 func (slog *SpaxosLog) Propose(
 	reqid uint64, data []byte, asMaster bool) error {
 
@@ -53,8 +57,15 @@ func (slog *SpaxosLog) MultiPropose(
 	return slog.sp.multiPropose(reqid, values, asMaster)
 }
 
+// the client, after proposing <req-id, value>, may or may not
+// found given req-id in hostReqidMap:
+// - if not, which indicate the proposing spaxos instance still in progress;
+// - if found, if req-id don't match with the reqids[] in given index num, it means
+//   proposing failed.
 func (slog *SpaxosLog) Get(
-	beginIndex uint64, reqids []uint64, values [][][]byte) (int, error) {
+	beginIndex uint64, reqids []uint64, values [][][]byte,
+	// map between host req-id and spaxos log entry index;
+	hostReqidMap map[uint64]uint64) (int, error) {
 	assert(0 < beginIndex)
 	assert(len(reqids) == len(values))
 	if 0 == len(reqids) {
@@ -93,6 +104,9 @@ func (slog *SpaxosLog) Get(
 		assert(beginIndex+i == hs.Index)
 		reqids[i] = hs.AcceptedValue.Reqid
 		values[i] = hs.AcceptedValue.Values
+		if 0 != reqids[i] && nil != hostReqidMap {
+			hostReqidMap[reqids[i]] = hs.Index
+		}
 	}
 
 	return int(readCnt), nil

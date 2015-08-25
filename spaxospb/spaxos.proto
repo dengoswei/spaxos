@@ -72,6 +72,7 @@ message HardState {
     optional uint64  maxPromisedNum  = 5 [(gogoproto.nullable) = false];
     optional uint64  maxAcceptedNum  = 6 [(gogoproto.nullable) = false];
     optional ProposeItem   acceptedValue  = 7;
+    optional uint64  hostPropReqid       = 8 [(gogoproto.nullable) = false];
     // [(gogoproto.nullable) = false];
 }
 

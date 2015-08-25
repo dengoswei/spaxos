@@ -152,6 +152,7 @@ type HardState struct {
 	MaxPromisedNum   uint64       `protobuf:"varint,5,opt,name=maxPromisedNum" json:"maxPromisedNum"`
 	MaxAcceptedNum   uint64       `protobuf:"varint,6,opt,name=maxAcceptedNum" json:"maxAcceptedNum"`
 	AcceptedValue    *ProposeItem `protobuf:"bytes,7,opt,name=acceptedValue" json:"acceptedValue,omitempty"`
+	HostPropReqid    uint64       `protobuf:"varint,8,opt,name=hostPropReqid" json:"hostPropReqid"`
 	XXX_unrecognized []byte       `json:"-"`
 }
 
@@ -589,6 +590,22 @@ func (m *HardState) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HostPropReqid", wireType)
+			}
+			m.HostPropReqid = 0
+			for shift := uint(0); ; shift += 7 {
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.HostPropReqid |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			var sizeOfWire int
 			for {
@@ -830,6 +847,7 @@ func (m *HardState) Size() (n int) {
 		l = m.AcceptedValue.Size()
 		n += 1 + l + sovSpaxos(uint64(l))
 	}
+	n += 1 + sovSpaxos(uint64(m.HostPropReqid))
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -1007,6 +1025,9 @@ func (m *HardState) MarshalTo(data []byte) (n int, err error) {
 		}
 		i += n4
 	}
+	data[i] = 0x40
+	i++
+	i = encodeVarintSpaxos(data, i, uint64(m.HostPropReqid))
 	if m.XXX_unrecognized != nil {
 		i += copy(data[i:], m.XXX_unrecognized)
 	}
@@ -1191,6 +1212,9 @@ func (this *HardState) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.AcceptedValue.Equal(that1.AcceptedValue) {
+		return false
+	}
+	if this.HostPropReqid != that1.HostPropReqid {
 		return false
 	}
 	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {

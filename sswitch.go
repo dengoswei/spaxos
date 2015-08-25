@@ -88,6 +88,7 @@ func (sw *SSwitch) GetRecvChan() chan pb.Message {
 }
 
 func (sw *SSwitch) Stop() {
+	assert(nil != sw.stop)
 	select {
 	case sw.stop <- struct{}{}:
 	case <-sw.done:

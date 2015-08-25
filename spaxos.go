@@ -437,6 +437,32 @@ func (sp *spaxos) fakeRunStateMachine() {
 	}
 }
 
+func (sp *spaxos) allocateIndexNum() uint64 {
+	if 0 == sp.maxIndex {
+		return uint64(1)
+	}
+
+	assert(0 < sp.maxIndex)
+	ins, ok := sp.insgroup[sp.maxIndex]
+	assert(true == ok)
+	assert(nil != ins)
+	assert(ins.index == sp.maxIndex)
+
+	// restriction: only propose after the prev one has been chosen:
+	// MAYBE: if relex this restriction, we can given each proposing
+	// a new index number with a hard limit on how many unchosen spaxos
+	// instance can run at the same time.
+	if true == ins.chosen {
+		return sp.maxIndex + 1
+	}
+
+	assert(false == ins.chosen)
+	// never call allocateIndexNum twice
+	// on the same spaxos instance
+	assert(0 == ins.hostPropReqid)
+	return sp.maxIndex
+}
+
 func (sp *spaxos) runStateMachine() {
 	var propc chan pb.Message
 
@@ -455,7 +481,9 @@ func (sp *spaxos) runStateMachine() {
 		select {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
-			propMsg.Index = sp.maxIndex + 1
+			propMsg.Index = sp.allocateIndexNum()
+			assert(0 < propMsg.Index)
+			assert(propMsg.Index >= sp.maxIndex)
 			LogDebug("prop msg %v", propMsg)
 			sp.step(propMsg)
 

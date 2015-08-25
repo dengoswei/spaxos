@@ -36,3 +36,14 @@
          - for index in (nextMinIndex, min(nextMinIndex+11, maxIndex)), but not yet have corresponding spaxos instance: create a empty spaxos instance, and try to issue a broadcast pb.MsgCatchUp req;
          - for index already in insgroup, the catch up procedure is relayed on timeout setting;
        - spaxos instance: only response pb.MsgCatchUp req if ins is masked as chosen;
+
+    - propose restriction:
+      // FOR MORE GENERAL PROPOSING
+      1. add HostPropReqid in pb.HardState: which never change after Propose set up;
+      2. HostPropReqid is local propoerty, never broadcast through pb.Message;
+      3. 0 == HostPropReqid, indicate it's a no-op proposing, or it's proposing by other spaxos host;
+      4. db.Get will return a map describle the relation-ship between host proposing req-id and spaxos log entry, 
+         if there are any..
+      5. caller should wait for the prev host proposing complete, before issue a new propose;
+
+
