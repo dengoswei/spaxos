@@ -189,6 +189,7 @@ func TestSimplePropose(t *testing.T) {
 	}
 
 	assert(true == ins.chosen)
+	println("TEST", sp.nextMinIndex)
 	assert(1 == sp.nextMinIndex)
 	spkg = <-sp.storec
 	assert(1 == spkg.minIndex)

@@ -385,6 +385,8 @@ func (ins *spaxosInstance) stepTryCatchUp(sp *spaxos, msg pb.Message) {
 	assert(false == ins.chosen)
 
 	// broadcast msg
+	// => spaxos_instance don't explicit deal with MsgCatchUp,
+	// only chosen spaxos_instance will response with MsgChosen;
 	catchReq := pb.Message{
 		Type:  pb.MsgCatchUp,
 		Index: ins.index, From: sp.id, To: 0}

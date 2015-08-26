@@ -3,6 +3,7 @@ package spaxos
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	//	pb "spaxos/spaxospb"
@@ -12,6 +13,8 @@ import (
 var (
 	ErrStopped = errors.New("spaxos: stopped")
 )
+
+const heartBeatInterval = uint64(100) // 100ms
 
 type spaxos struct {
 	id     uint64
@@ -29,18 +32,23 @@ type spaxos struct {
 	minIndex uint64
 	insgroup map[uint64]*spaxosInstance
 
+	// peers maxIndex info
+	// peersMaxIndex map[uint64]uint64
+
 	// signal done
 	done chan struct{}
 	stop chan struct{}
 
 	// timeout
-	elapsed      uint64
-	timeoutQueue map[uint64]map[uint64]*spaxosInstance
-	tickc        chan struct{}
+	elapsed       uint64
+	prevHeartBeat uint64
+	timeoutQueue  map[uint64]map[uint64]*spaxosInstance
+	tickc         chan struct{}
 
 	// communicate channel
-	// attach: smt & db
-	propc chan pb.Message
+	// attach: front-end & smt
+	propc   chan pb.Message
+	notifyc chan struct{}
 
 	// attach: smt & st
 	storec chan storePackage
@@ -50,11 +58,16 @@ type spaxos struct {
 
 	// attach: smt & nt
 	recvc chan pb.Message
+
+	// timeout setting
+	heartBeatInterval uint64
+	instanceTimeout   uint64
 }
 
 func newSpaxos(c *Config, db Storager) (*spaxos, error) {
 	assert(nil != c)
 
+	rand.Seed(time.Now().UnixNano())
 	sp := &spaxos{
 		id:           c.Selfid,
 		groups:       c.GetGroupIds(),
@@ -64,10 +77,17 @@ func newSpaxos(c *Config, db Storager) (*spaxos, error) {
 		tickc:        make(chan struct{}),
 		chosenMap:    make(map[uint64]bool),
 		insgroup:     make(map[uint64]*spaxosInstance),
-		propc:        make(chan pb.Message),
-		storec:       make(chan storePackage),
-		sendc:        make(chan []pb.Message),
-		recvc:        make(chan pb.Message)}
+		//		peersMaxIndex: make(map[uint64]uint64),
+		propc:             make(chan pb.Message),
+		notifyc:           make(chan struct{}),
+		storec:            make(chan storePackage),
+		sendc:             make(chan []pb.Message),
+		recvc:             make(chan pb.Message),
+		heartBeatInterval: c.Stimeout.Heartbeat,
+		instanceTimeout: c.Stimeout.Instimeoutbase +
+			uint64(rand.Intn(int(c.Stimeout.Instimeoutrange)))}
+	assert(0 < sp.heartBeatInterval)
+	assert(0 < sp.instanceTimeout)
 
 	minIndex, maxIndex, err := db.GetIndex()
 	if nil != err {
@@ -99,6 +119,7 @@ func newSpaxos(c *Config, db Storager) (*spaxos, error) {
 		}
 	}
 
+	sp.generateHeartBeatMsg()
 	// TODO:
 	// 1. catch up ?
 	// 2. noop on last maxIndex(no-chosen) ?
@@ -202,6 +223,11 @@ func (sp *spaxos) multiPropose(
 	return nil
 }
 
+func (sp *spaxos) waitProposeRsp() error {
+	// TODO
+	return nil
+}
+
 func (sp *spaxos) propose(reqid uint64, value []byte, asMaster bool) error {
 	return sp.multiPropose(reqid, [][]byte{value}, asMaster)
 }
@@ -292,13 +318,24 @@ func (sp *spaxos) stepNilSpaxosInstance(msg pb.Message) {
 	return
 }
 
+func (sp *spaxos) generateHeartBeatMsg() {
+	heartBeatMsg := pb.Message{
+		Type: pb.MsgBeat, Index: sp.maxIndex,
+		From: sp.id, To: 0}
+	sp.appendMsg(heartBeatMsg)
+	sp.prevHeartBeat = sp.elapsed
+	LogDebug("hostid %d generateHeartBeatMsg elapsed %d", sp.id, sp.elapsed)
+}
+
 func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
 	assert(nil != ins)
 	assert(0 < ins.index)
 	// : to avoid live lock
 	//  => may add rand into timeout setting !
 	// TODO: add random
-	newTimeout := sp.elapsed + 10 // default 10ms timeout(TODO: fix)
+	assert(0 < sp.instanceTimeout)
+	newTimeout := sp.elapsed + sp.instanceTimeout
+	//	newTimeout := sp.elapsed + 10 // default 10ms timeout(TODO: fix)
 	if ins.timeoutAt == newTimeout {
 		// no update:
 		return
@@ -361,36 +398,45 @@ func (sp *spaxos) doTryCatchUp(msg pb.Message) {
 		catchIns.step(sp, msg)
 	}
 
-	// use heartbeat msg: ask for
-	if sp.maxIndex-sp.minIndex == 0 {
-		// most recent
-		heartBeatMsg := pb.Message{Type: pb.MsgBeat, From: sp.id, To: 0}
-		sp.appendMsg(heartBeatMsg)
-	}
+	//	// use heartbeat msg: ask for
+	//	if sp.maxIndex-sp.minIndex == 0 {
+	//		// most recent
+	//		heartBeatMsg := pb.Message{Type: pb.MsgBeat, From: sp.id, To: 0}
+	//		sp.appendMsg(heartBeatMsg)
+	//	}
 }
 
 func (sp *spaxos) updateStatus(msg pb.Message) {
 	assert(sp.id == msg.To)
-
-	// updateStatus: only deal with maxIndex for now!
-	switch msg.Type {
-	case pb.MsgStatus:
-		// ask for msg status
-		statusMsg := pb.Message{Type: pb.MsgStatusResp,
-			Index: sp.maxIndex, From: sp.id, To: msg.From}
-		sp.appendMsg(statusMsg)
-	case pb.MsgStatusResp:
-		peerMaxIndex := msg.Index
-		if sp.maxIndex < peerMaxIndex {
-			LogDebug("%s update maxIndex %d to %d",
-				GetFunctionName(sp.updateStatus),
-				sp.maxIndex, peerMaxIndex)
-			sp.maxIndex = peerMaxIndex
-		}
-	default:
-		assert(false)
+	if msg.Index > sp.maxIndex {
+		LogDebug("%s update maxIndex %d => %d",
+			GetCurrentFuncName(), sp.maxIndex, msg.Index)
+		sp.maxIndex = msg.Index
 	}
 }
+
+//func (sp *spaxos) updateStatus(msg pb.Message) {
+//	assert(sp.id == msg.To)
+//
+//	// updateStatus: only deal with maxIndex for now!
+//	switch msg.Type {
+//	case pb.MsgStatus:
+//		// ask for msg status
+//		statusMsg := pb.Message{Type: pb.MsgStatusResp,
+//			Index: sp.maxIndex, From: sp.id, To: msg.From}
+//		sp.appendMsg(statusMsg)
+//	case pb.MsgStatusResp:
+//		peerMaxIndex := msg.Index
+//		if sp.maxIndex < peerMaxIndex {
+//			LogDebug("%s update maxIndex %d to %d",
+//				GetFunctionName(sp.updateStatus),
+//				sp.maxIndex, peerMaxIndex)
+//			sp.maxIndex = peerMaxIndex
+//		}
+//	default:
+//		assert(false)
+//	}
+//}
 
 func (sp *spaxos) stepUtiltyMsg(msg pb.Message) {
 	assert(sp.id == msg.To)
@@ -401,6 +447,8 @@ func (sp *spaxos) stepUtiltyMsg(msg pb.Message) {
 		sp.doTryCatchUp(msg)
 	case pb.MsgBeat:
 		sp.updateStatus(msg)
+		//	case pb.MsgStatus, pb.MsgStatusResp:
+		//		sp.updateStatus(msg)
 	default:
 		assert(false)
 	}
@@ -408,19 +456,22 @@ func (sp *spaxos) stepUtiltyMsg(msg pb.Message) {
 }
 
 func (sp *spaxos) step(msg pb.Message) {
-	assert(0 != msg.Index)
 	assert(sp.id == msg.To)
 
 	switch msg.Type {
-	case pb.MsgUpdateMinIndex, pb.MsgCatchUp:
+	case pb.MsgUpdateMinIndex, pb.MsgTryCatchUp:
 		fallthrough
-	case pb.MsgStatus, pb.MsgStatusResp:
+	case pb.MsgBeat:
 		sp.stepUtiltyMsg(msg)
 		return
+		//	case pb.MsgStatus, pb.MsgStatusResp:
+		//		sp.stepUtiltyMsg(msg)
+		//		return
 	// TODO
 	default:
 	}
 
+	assert(0 != msg.Index)
 	// get ins by index
 	ins := sp.getSpaxosInstance(msg.Index)
 	if nil == ins {
@@ -460,40 +511,39 @@ func (sp *spaxos) fakeRunStateMachine() {
 	}
 }
 
-func (sp *spaxos) allocateIndexNum() uint64 {
-	if 0 == sp.maxIndex ||
-		sp.minIndex == sp.maxIndex {
-		return sp.maxIndex + 1
-	}
-
-	assert(0 < sp.maxIndex)
-	ins, ok := sp.insgroup[sp.maxIndex]
-	assert(true == ok)
-	assert(nil != ins)
-	assert(ins.index == sp.maxIndex)
-
-	// restriction: only propose after the prev one has been chosen:
-	// MAYBE: if relex this restriction, we can given each proposing
-	// a new index number with a hard limit on how many unchosen spaxos
-	// instance can run at the same time.
-	if true == ins.chosen {
-		return sp.maxIndex + 1
-	}
-
-	assert(false == ins.chosen)
-	// never call allocateIndexNum twice
-	// on the same spaxos instance
-	assert(0 == ins.hostPropReqid)
-	return sp.maxIndex
-}
+//func (sp *spaxos) allocateIndexNum() uint64 {
+//	if 0 == sp.maxIndex ||
+//		sp.minIndex == sp.maxIndex {
+//		return sp.maxIndex + 1
+//	}
+//
+//	assert(0 < sp.maxIndex)
+//	ins, ok := sp.insgroup[sp.maxIndex]
+//	assert(true == ok)
+//	assert(nil != ins)
+//	assert(ins.index == sp.maxIndex)
+//
+//	// restriction: only propose after the prev one has been chosen:
+//	// MAYBE: if relex this restriction, we can given each proposing
+//	// a new index number with a hard limit on how many unchosen spaxos
+//	// instance can run at the same time.
+//	if true == ins.chosen {
+//		return sp.maxIndex + 1
+//	}
+//
+//	assert(false == ins.chosen)
+//	// never call allocateIndexNum twice
+//	// on the same spaxos instance
+//	assert(0 == ins.hostPropReqid)
+//	return sp.maxIndex
+//}
 
 func (sp *spaxos) runStateMachine() {
 	var propc chan pb.Message
 
-	myindex := uint64(0)
 	for {
-		// select on propc only if myindex == 0
-		if 0 == myindex {
+		// select on propc only if spaxos believe it's up-to-date
+		if sp.minIndex == sp.maxIndex {
 			propc = sp.propc
 		} else {
 			propc = nil
@@ -505,14 +555,16 @@ func (sp *spaxos) runStateMachine() {
 		select {
 		case propMsg := <-propc:
 			assert(nil != propMsg.Entry.Value)
-			propMsg.Index = sp.allocateIndexNum()
+			assert(sp.minIndex == sp.maxIndex)
+			propMsg.Index = sp.maxIndex + 1
+			// propMsg.Index = sp.allocateIndexNum()
 			assert(0 < propMsg.Index)
-			assert(propMsg.Index >= sp.maxIndex)
+			// assert(propMsg.Index >= sp.maxIndex)
 			LogDebug("prop msg %v", propMsg)
 			sp.step(propMsg)
 
 		case msg := <-sp.recvc:
-			assert(0 != msg.Index)
+			assert(0 < msg.Index || pb.MsgBeat == msg.Type)
 			// look up the coresponding spaxos instance
 			// pass msg to spaxos instance
 			assert(0 != msg.From)
@@ -538,6 +590,11 @@ func (sp *spaxos) runStateMachine() {
 				}
 
 				delete(sp.timeoutQueue, sp.elapsed)
+			}
+
+			assert(0 < sp.heartBeatInterval)
+			if sp.prevHeartBeat+sp.heartBeatInterval <= sp.elapsed {
+				sp.generateHeartBeatMsg()
 			}
 
 		case <-sp.stop:
@@ -566,12 +623,22 @@ func (sp *spaxos) runStorage(db Storager) {
 	assert(nil != db)
 
 	var sendingMsgs []pb.Message
+	var notifyc chan struct{}
 	prevMinIndex := uint64(0)
+	doNotify := false
 	for {
 
 		sendc := getMsgs(sp.sendc, sendingMsgs)
+		if doNotify {
+			notifyc = sp.notifyc
+		} else {
+			notifyc = nil
+		}
 
 		select {
+		case notifyc <- struct{}{}:
+			doNotify = false
+
 		case spkg := <-sp.storec:
 			// deal with spkg
 			outHardStates := spkg.outHardStates
@@ -606,6 +673,7 @@ func (sp *spaxos) runStorage(db Storager) {
 			if false == dropMsgs {
 				err := db.SetIndex(spkg.minIndex, spkg.maxIndex)
 				if nil == err && prevMinIndex != spkg.minIndex {
+					doNotify = true
 					indexMsg := pb.Message{
 						Type: pb.MsgUpdateMinIndex, Index: spkg.minIndex,
 						From: sp.id, To: sp.id}
@@ -679,7 +747,7 @@ func (sp *spaxos) runSwitch(sw Switcher) {
 		select {
 		// collect msg from swwork recvc
 		case msg := <-nrecvc:
-			assert(0 < msg.Index)
+			assert(0 < msg.Index || pb.MsgBeat == msg.Type)
 			if msg.To == sp.id {
 				forwardingMsgs = append(forwardingMsgs, msg)
 			}
@@ -687,7 +755,7 @@ func (sp *spaxos) runSwitch(sw Switcher) {
 		// collect msgs from st
 		case msgs := <-sp.sendc:
 			for _, msg := range msgs {
-				assert(0 < msg.Index)
+				assert(0 < msg.Index || pb.MsgBeat == msg.Type)
 				assert(sp.id == msg.From)
 				if msg.To == sp.id {
 					// forwarding msg

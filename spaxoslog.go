@@ -2,11 +2,13 @@ package spaxos
 
 import (
 	"fmt"
+	"sync"
 	//	"encoding/json"
 	//	"io/ioutil"
 )
 
 type SpaxosLog struct {
+	mu sync.Mutex
 	sp *spaxos
 	db Storager
 
@@ -47,9 +49,17 @@ func (slog *SpaxosLog) Stop() {
 // 1. only one caller can call Propose at any given time,
 //    in fact, caller shouldn't call Propose when prev caller
 //    still waiting the Proposing result;
+// possible idiom:
+//   slog.Propose(...)
+//   for {
+//      slog.Wait()
+//      slog.Get(...)
+//      if reqid match, break; else continue
+//   }
 func (slog *SpaxosLog) Propose(
 	reqid uint64, data []byte, asMaster bool) error {
 
+	// slog.sp make sure at most one propose pending
 	return slog.sp.propose(reqid, data, asMaster)
 }
 
@@ -112,4 +122,13 @@ func (slog *SpaxosLog) Get(
 	}
 
 	return int(readCnt), nil
+}
+
+// wait util progress in spaxos
+func (slog *SpaxosLog) Wait() error {
+	select {
+	case <-slog.sp.notifyc:
+		return nil
+	}
+	// TODO: timeout or stop maybe ?
 }

@@ -17,5 +17,10 @@
             "port": 10003
         }
     ], 
-    "path": "./data"
+    "path": "./data", 
+    "stimeout": {
+        "heartbeat": 100, 
+        "instimeoutbase": 200,
+        "instimeoutrange": 30 
+    }
 }

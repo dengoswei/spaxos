@@ -47,10 +47,17 @@ type GroupEntry struct {
 	Port int    `json:port`
 }
 
+type SpaxosTimeoutSetting struct {
+	Heartbeat       uint64 `json:heartbeat`
+	Instimeoutbase  uint64 `json:instimeoutbase`
+	Instimeoutrange uint64 `json:instimeoutrange`
+}
+
 type Config struct {
-	Selfid uint64       `json:selfid`
-	Groups []GroupEntry `json:groups`
-	Path   string       `json:path`
+	Selfid   uint64               `json:selfid`
+	Groups   []GroupEntry         `json:groups`
+	Path     string               `json:path`
+	Stimeout SpaxosTimeoutSetting `json:stimeout`
 }
 
 func (c *Config) GetGroupIds() map[uint64]bool {
@@ -89,14 +96,20 @@ func ReadConfig(configFile string) (*Config, error) {
 }
 
 func NewTestConfig() *Config {
-	c := &Config{Selfid: 1, Path: "./test_data",
+	c := &Config{
+		Selfid: 1, Path: "./test_data",
 		Groups: []GroupEntry{
 			GroupEntry{Id: 1, Ip: "127.0.0.1",
 				Port: randTestPort()},
 			GroupEntry{Id: 2, Ip: "127.0.0.1",
 				Port: randTestPort()},
 			GroupEntry{Id: 3, Ip: "127.0.0.1",
-				Port: randTestPort()}}}
+				Port: randTestPort()}},
+		Stimeout: SpaxosTimeoutSetting{
+			Heartbeat:       10,
+			Instimeoutbase:  20,
+			Instimeoutrange: 10,
+		}}
 	return c
 }
 

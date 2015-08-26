@@ -118,6 +118,7 @@ func randSpaxos() *spaxos {
 	sp, err := newSpaxos(c, db)
 	assert(nil == err)
 	assert(nil != sp)
+	sp.outMsgs = nil
 	return sp
 }
 
