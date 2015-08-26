@@ -3,7 +3,8 @@ package spaxos
 import (
 	"testing"
 
-	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
 )
 
 func TestNewStorage(t *testing.T) {
@@ -53,7 +54,7 @@ func TestSetAndGet(t *testing.T) {
 	defer store.Close()
 
 	hs := randHardState()
-	err = store.Set([]pb.HardState{hs})
+	err = store.Store([]pb.HardState{hs})
 	assert(nil == err)
 
 	newhs, err := store.Get(hs.Index)

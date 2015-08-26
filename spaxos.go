@@ -2,9 +2,11 @@ package spaxos
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
-	pb "spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 var (
@@ -69,6 +71,7 @@ func newSpaxos(c *Config, db Storager) (*spaxos, error) {
 
 	minIndex, maxIndex, err := db.GetIndex()
 	if nil != err {
+		fmt.Printf("db.GetIndex err %s\n", err)
 		return nil, err
 	}
 

@@ -4,7 +4,8 @@ import (
 	"testing"
 	"time"
 
-	pb "spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 func TestNewSwitch(t *testing.T) {

@@ -1,7 +1,8 @@
 package spaxos
 
 import (
-	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
+	// pb "spaxos/spaxospb"
 )
 
 type stepFunc func(sp *spaxos, msg pb.Message)

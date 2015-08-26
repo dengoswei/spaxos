@@ -4,7 +4,8 @@ import (
 	"math/rand"
 	"testing"
 
-	pb "spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 func TestNewSpaxosInstance(t *testing.T) {

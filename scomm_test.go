@@ -6,7 +6,8 @@ import (
 	"os"
 	"testing"
 
-	pb "spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 func TestFakeSwitch(t *testing.T) {

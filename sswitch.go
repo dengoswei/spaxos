@@ -8,7 +8,8 @@ import (
 	"net"
 	"time"
 
-	pb "spaxos/spaxospb"
+	//pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 const netType = "tcp"

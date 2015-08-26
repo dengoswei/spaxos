@@ -1,8 +1,9 @@
 package spaxos
 
 import (
-//	"encoding/json"
-//	"io/ioutil"
+	"fmt"
+	//	"encoding/json"
+	//	"io/ioutil"
 )
 
 type SpaxosLog struct {
@@ -17,6 +18,7 @@ func NewSpaxosLog(c *Config, db Storager) (*SpaxosLog, error) {
 	assert(nil != c)
 	sp, err := newSpaxos(c, db)
 	if nil != err {
+		fmt.Printf("newSpaxos err %s\n", err)
 		return nil, err
 	}
 

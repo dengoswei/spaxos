@@ -35,3 +35,6 @@
 
 
 8. retire <index, spaxos_instace>
+
+9. after init spaxos, 
+   // => prop msg: trying to catch-up with others!!

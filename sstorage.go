@@ -6,7 +6,9 @@ import (
 	"strconv"
 
 	"github.com/golang/leveldb"
-	pb "spaxos/spaxospb"
+	ldb "github.com/golang/leveldb/db"
+	// pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 var keyMinIndex = []byte("min_index")
@@ -37,7 +39,7 @@ func NewStorage(c *Config) (*SStorage, error) {
 	return store, nil
 }
 
-func (store *SStorage) Set(data []pb.HardState) error {
+func (store *SStorage) Store(data []pb.HardState) error {
 	assert(nil != store.db)
 
 	// group into one batch
@@ -95,6 +97,9 @@ func (store *SStorage) getIndex(key []byte) (uint64, error) {
 
 	val, err := store.db.Get(key, nil)
 	if nil != err {
+		if ldb.ErrNotFound == err {
+			return 0, nil
+		}
 		return 0, err
 	}
 

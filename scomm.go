@@ -5,7 +5,8 @@ import (
 	"errors"
 	"io/ioutil"
 
-	pb "spaxos/spaxospb"
+	// pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 const MaxNodeID uint64 = 1024

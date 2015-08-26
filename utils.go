@@ -8,7 +8,8 @@ import (
 	"runtime"
 	"time"
 
-	pb "spaxos/spaxospb"
+	// pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 var log = logging.MustGetLogger("spaxos")

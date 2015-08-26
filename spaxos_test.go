@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	pb "spaxos/spaxospb"
+	//	pb "spaxos/spaxospb"
+	pb "github.com/dengoswei/spaxos/spaxospb"
 )
 
 var _ = fmt.Println
