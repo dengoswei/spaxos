@@ -34,19 +34,17 @@ var _ = math.Inf
 type MessageType int32
 
 const (
-	MsgHup  MessageType = 0
-	MsgBeat MessageType = 1
+	MsgHup    MessageType = 0
+	MsgBeat   MessageType = 1
+	MsgOnline MessageType = 2
 	// # Prop
-	MsgProp     MessageType = 2
-	MsgPropResp MessageType = 3
+	MsgProp     MessageType = 5
+	MsgPropResp MessageType = 6
 	// # Accpt
-	MsgAccpt     MessageType = 4
-	MsgAccptResp MessageType = 5
-	// # ask spaxos status
-	MsgStatus     MessageType = 6
-	MsgStatusResp MessageType = 7
+	MsgAccpt     MessageType = 7
+	MsgAccptResp MessageType = 8
 	// # catch up
-	MsgCatchUp MessageType = 8
+	MsgCatchUp MessageType = 9
 	// # TODO
 	// internal msg type : drive
 	MsgTimeOut        MessageType = 10
@@ -63,13 +61,12 @@ const (
 var MessageType_name = map[int32]string{
 	0:   "MsgHup",
 	1:   "MsgBeat",
-	2:   "MsgProp",
-	3:   "MsgPropResp",
-	4:   "MsgAccpt",
-	5:   "MsgAccptResp",
-	6:   "MsgStatus",
-	7:   "MsgStatusResp",
-	8:   "MsgCatchUp",
+	2:   "MsgOnline",
+	5:   "MsgProp",
+	6:   "MsgPropResp",
+	7:   "MsgAccpt",
+	8:   "MsgAccptResp",
+	9:   "MsgCatchUp",
 	10:  "MsgTimeOut",
 	11:  "MsgMajorReject",
 	12:  "MsgCliProp",
@@ -83,13 +80,12 @@ var MessageType_name = map[int32]string{
 var MessageType_value = map[string]int32{
 	"MsgHup":            0,
 	"MsgBeat":           1,
-	"MsgProp":           2,
-	"MsgPropResp":       3,
-	"MsgAccpt":          4,
-	"MsgAccptResp":      5,
-	"MsgStatus":         6,
-	"MsgStatusResp":     7,
-	"MsgCatchUp":        8,
+	"MsgOnline":         2,
+	"MsgProp":           5,
+	"MsgPropResp":       6,
+	"MsgAccpt":          7,
+	"MsgAccptResp":      8,
+	"MsgCatchUp":        9,
 	"MsgTimeOut":        10,
 	"MsgMajorReject":    11,
 	"MsgCliProp":        12,

@@ -15,20 +15,17 @@ option (gogoproto.equal_all) = true;
 enum MessageType {
     MsgHup              = 0;
     MsgBeat             = 1;
+    MsgOnline           = 2;
 
     // # Prop
-    MsgProp             = 2;
-    MsgPropResp         = 3;
+    MsgProp             = 5;
+    MsgPropResp         = 6;
     // # Accpt
-    MsgAccpt            = 4;
-    MsgAccptResp        = 5;
-
-    // # ask spaxos status
-    MsgStatus         = 6;
-    MsgStatusResp     = 7;
+    MsgAccpt            = 7;
+    MsgAccptResp        = 8;
 
     // # catch up
-    MsgCatchUp        = 8;
+    MsgCatchUp          = 9;
 
     // # TODO
     // internal msg type : drive
