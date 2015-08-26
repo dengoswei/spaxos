@@ -20,6 +20,8 @@ func TestNewSpaxosInstance(t *testing.T) {
 	assert(0 == ins.maxAcceptedHintNum)
 	assert(nil == ins.proposingValue)
 	assert(nil == ins.rspVotes)
+	assert(false == ins.tryNoopProp)
+	assert(nil == ins.noopVotes)
 	assert(nil != ins.stepProposer)
 	assert(0 == ins.promisedNum)
 	assert(0 == ins.acceptedNum)
@@ -444,7 +446,9 @@ func helpMajorPromised(sp *spaxos, ins *spaxosInstance) {
 
 	// phase 1: promised
 	for {
-		if ins.isPromised {
+		if 1 == len(sp.outMsgs) {
+			msgReq := sp.outMsgs[0]
+			assert(pb.MsgAccpt == msgReq.Type)
 			break
 		}
 
@@ -580,14 +584,14 @@ func TestStepAcceptRsp(t *testing.T) {
 		assert(nil != sp)
 
 		helpMajorPromised(sp, ins)
-		assert(true == ins.isPromised)
 
 		prevPropNum := ins.maxProposedNum
 		sp.outMsgs = nil
 		sp.outHardStates = nil
 		for {
-			if false == ins.isPromised {
-				// fall back into stepPrepare
+			if 1 == len(sp.outMsgs) {
+				msgReq := sp.outMsgs[0]
+				assert(pb.MsgProp == msgReq.Type)
 				break
 			}
 
@@ -606,4 +610,67 @@ func TestStepAcceptRsp(t *testing.T) {
 		assert(0 == propMsg.To)
 		assert(ins.maxProposedNum == propMsg.Entry.PropNum)
 	}
+}
+
+func TestNoopPropose(t *testing.T) {
+	printIndicate()
+
+	ins := randSpaxosInstance()
+	assert(nil != ins)
+	sp := randSpaxos()
+	assert(nil != sp)
+
+	// self accepted
+	ins.chosen = false
+	proposingValue := randPropItem()
+	assert(nil != proposingValue)
+	ins.acceptedNum = 0
+	ins.acceptedValue = nil
+	ins.Propose(sp, proposingValue, false)
+	assert(false == ins.tryNoopProp)
+
+	// backoff to no-op prop
+	ins.NoopPropose(sp)
+	assert(nil == ins.proposingValue)
+	assert(true == ins.tryNoopProp)
+	assert(nil != ins.rspVotes)
+	assert(0 == len(ins.rspVotes))
+	assert(nil != ins.noopVotes)
+	assert(0 == len(ins.rspVotes))
+
+	sp.outMsgs = nil
+	sp.outHardStates = nil
+	for {
+		if 1 == len(sp.outMsgs) {
+			msgReq := sp.outMsgs[0]
+			assert(pb.MsgAccpt == msgReq.Type)
+			assert(nil == msgReq.Entry.Value)
+			break
+		}
+
+		noopPropRsp := randPropRsp(sp, ins)
+		ins.stepProposer(sp, noopPropRsp)
+	}
+
+	sp.outMsgs = nil
+	sp.outHardStates = nil
+	for {
+		if ins.chosen {
+			break
+		}
+
+		accptRsp := randAccptRsp(sp, ins)
+		ins.stepProposer(sp, accptRsp)
+	}
+
+	assert(true == ins.chosen)
+	assert(1 == len(sp.outMsgs))
+
+	assert(nil == ins.acceptedValue)
+	chosenMsg := sp.outMsgs[0]
+	assert(pb.MsgChosen == chosenMsg.Type)
+	assert(ins.index == chosenMsg.Index)
+	assert(sp.id == chosenMsg.From)
+	assert(0 == chosenMsg.To)
+	assert(nil == chosenMsg.Entry.Value)
 }

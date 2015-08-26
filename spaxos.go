@@ -99,6 +99,9 @@ func newSpaxos(c *Config, db Storager) (*spaxos, error) {
 		}
 	}
 
+	// TODO:
+	// 1. catch up ?
+	// 2. noop on last maxIndex(no-chosen) ?
 	return sp, nil
 }
 
@@ -159,6 +162,11 @@ func (sp *spaxos) asMajority(votes map[uint64]bool, cond bool) bool {
 		}
 	}
 	return cnt > total/2
+}
+
+func (sp *spaxos) recvAllRsp(votes map[uint64]bool) bool {
+	assert(nil != votes)
+	return len(sp.groups) == len(votes)
 }
 
 // interface to db
@@ -289,6 +297,7 @@ func (sp *spaxos) updateTimeout(ins *spaxosInstance) {
 	assert(0 < ins.index)
 	// : to avoid live lock
 	//  => may add rand into timeout setting !
+	// TODO: add random
 	newTimeout := sp.elapsed + 10 // default 10ms timeout(TODO: fix)
 	if ins.timeoutAt == newTimeout {
 		// no update:

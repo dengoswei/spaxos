@@ -17,8 +17,11 @@ type spaxosInstance struct {
 	maxAcceptedHintNum uint64
 	proposingValue     *pb.ProposeItem
 	rspVotes           map[uint64]bool
-	isPromised         bool
-	stepProposer       stepFunc
+	tryNoopProp        bool
+	noopVotes          map[uint64]bool
+
+	// isPromised   bool
+	stepProposer stepFunc
 
 	// acceptor
 	promisedNum   uint64
@@ -92,7 +95,7 @@ func (ins *spaxosInstance) updateAccepted(msg pb.Message) pb.Message {
 		return rsp
 	}
 
-	assert(nil != msg.Entry.Value)
+	// assert(nil != msg.Entry.Value)
 	ins.promisedNum = msg.Entry.PropNum
 	ins.acceptedNum = msg.Entry.PropNum
 	ins.acceptedValue = msg.Entry.Value
@@ -138,8 +141,21 @@ func (ins *spaxosInstance) Propose(
 	//}
 
 	// TODO: master propose: skip prepare phase
+	ins.tryNoopProp = false
 	ins.beginPreparePhase(sp, false)
 }
+
+// TODO: no-op propose
+func (ins *spaxosInstance) NoopPropose(sp *spaxos) {
+	assert(nil != sp)
+	assert(false == ins.chosen)
+
+	ins.tryNoopProp = true
+	ins.proposingValue = nil
+	ins.beginPreparePhase(sp, false)
+}
+
+// end of no-op propose
 
 func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 	assert(nil != sp)
@@ -148,7 +164,7 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 		return
 	}
 
-	ins.isPromised = false
+	// ins.isPromised = false
 	// inc ins.maxProposedNum
 	nextProposeNum := sp.getNextProposeNum(
 		ins.maxProposedNum, ins.promisedNum)
@@ -158,7 +174,8 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 		From: sp.id, Entry: pb.PaxosEntry{PropNum: nextProposeNum}}
 
 	// optimize: local check first
-	{
+	ins.rspVotes = make(map[uint64]bool)
+	if !ins.tryNoopProp {
 		rsp := ins.updatePromised(req)
 		assert(false == rsp.Reject)
 		assert(0 == rsp.From)
@@ -170,10 +187,13 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 			ins.maxAcceptedHintNum = rsp.Entry.AccptNum
 			ins.proposingValue = rsp.Entry.Value
 		}
+
+		ins.rspVotes[sp.id] = true
+	} else {
+		// tryNoopProp
+		ins.noopVotes = make(map[uint64]bool)
 	}
 
-	ins.rspVotes = make(map[uint64]bool)
-	ins.rspVotes[sp.id] = true
 	ins.maxProposedNum = nextProposeNum
 	ins.stepProposer = ins.stepPrepareRsp
 
@@ -190,7 +210,7 @@ func (ins *spaxosInstance) beginAcceptPhase(sp *spaxos, dropReq bool) {
 		return
 	}
 
-	ins.isPromised = true
+	// ins.isPromised = true
 	req := pb.Message{
 		Type:  pb.MsgAccpt,
 		Index: ins.index, From: sp.id,
@@ -269,12 +289,32 @@ func (ins *spaxosInstance) stepPrepareRsp(
 			ins.maxAcceptedHintNum = msg.Entry.AccptNum
 			ins.proposingValue = msg.Entry.Value
 		}
+
+		if ins.tryNoopProp {
+			ins.noopVotes[msg.From] = nil == msg.Entry.Value
+		}
 	}
 
-	if promisedByMajority(sp, ins.rspVotes) {
-		ins.beginAcceptPhase(sp, false)
-	} else if rejectedByMajority(sp, ins.rspVotes) {
+	if rejectedByMajority(sp, ins.rspVotes) {
 		ins.beginPreparePhase(sp, false)
+	} else {
+		if ins.tryNoopProp {
+			if noopByMajority(sp, ins.noopVotes) {
+				// Since noop by Majority it's safe to
+				// ignore <maxAcceptedHitNum, proposingValue>,
+				// by using nil as proposingValue instread;
+				ins.maxAcceptedHintNum = 0
+				ins.proposingValue = nil
+				ins.beginAcceptPhase(sp, false)
+			} else if sp.recvAllRsp(ins.rspVotes) {
+				// don't reach noopByMajority after recv all resp
+				// => backoff to normal prop
+				ins.tryNoopProp = false // reset
+				ins.beginPreparePhase(sp, false)
+			}
+		} else if promisedByMajority(sp, ins.rspVotes) {
+			ins.beginAcceptPhase(sp, false)
+		}
 	}
 }
 
@@ -411,4 +451,9 @@ func acceptedByMajority(sp *spaxos, rspVotes map[uint64]bool) bool {
 func rejectedByMajority(sp *spaxos, rspVotes map[uint64]bool) bool {
 	assert(nil != sp)
 	return sp.asMajority(rspVotes, false)
+}
+
+func noopByMajority(sp *spaxos, noopVotes map[uint64]bool) bool {
+	assert(nil != sp)
+	return sp.asMajority(noopVotes, true)
 }

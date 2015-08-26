@@ -144,9 +144,15 @@ func TestSimplePropose(t *testing.T) {
 		assert(ins.promisedNum == hs.MaxPromisedNum)
 	}
 
+	sp.outMsgs = nil
+	sp.outHardStates = nil
+	//	assert(nil == sp.outMsgs)
+	//	assert(nil == sp.outHardStates)
 	// promised
 	for {
-		if ins.isPromised {
+		if 1 == len(sp.outMsgs) {
+			msgReq := sp.outMsgs[0]
+			assert(pb.MsgAccpt == msgReq.Type)
 			break
 		}
 

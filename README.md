@@ -4,21 +4,19 @@ branch
 - master: rewrite(as doc below), working;
 
 ## Playaround Tools
-simplesvr/simplesvr
-1.  
-   ``` bash
-   ./simplesvr config_file ip:port
-   ```
 
-   NOTICE: to make sure progress, you should setting up at least more then half svr(as descript in config_file)
+``` bash
+./simplesvr config_file ip:port
+```
 
-2. 
-   ``` bash
-   telnet ip:port
-   PROP $(reqid) $(prop-value)
-   ```
+NOTICE: to make sure progress, you should setting up at least more then half svr(as descript in config_file)
 
-   NOTICE: svr don't echo back anything, even if given propose have been chosen; check out svr side log instead;
+``` bash
+telnet ip:port
+PROP $(reqid) $(prop-value)
+```
+
+NOTICE: svr don't echo back anything, even if given propose have been chosen; check out svr side log instead;
 
 ## Feature List
 1. spaxos server as a paxos log lib, the comm usage as shown in simplesvr example;
