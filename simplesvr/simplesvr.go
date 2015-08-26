@@ -69,21 +69,17 @@ func NewSimpleSvr(configFile string) (*simplesvr, error) {
 	return s, nil
 }
 
-func busyWaitUntil(slog *spaxos.SpaxosLog, beginIndex uint64,
+func waitUntil(slog *spaxos.SpaxosLog, beginIndex uint64,
 	reqids []uint64, values [][][]byte, hostReqidMap map[uint64]uint64) error {
-
 	assert(0 < beginIndex)
-
 	timeout := time.After(3 * time.Second)
 	for {
-		cnt, err := slog.Get(beginIndex, reqids, values, hostReqidMap)
+		err := slog.Wait()
 		assert(nil == err)
+		cnt, err := slog.Get(beginIndex, reqids, values, hostReqidMap)
 		if 0 != cnt {
 			break
 		}
-
-		//	fmt.Printf("%s slog.Get cnt %d\n", spaxos.GetCurrentFuncName(), cnt)
-		time.Sleep(100 * time.Millisecond)
 
 		select {
 		case <-timeout:
@@ -152,9 +148,9 @@ func (s *simplesvr) Run(addr string) {
 			values := make([][][]byte, 1)
 			hostReqidMap := make(map[uint64]uint64)
 
-			err = busyWaitUntil(s.slog, beginIndex, reqids, values, hostReqidMap)
+			err = waitUntil(s.slog, beginIndex, reqids, values, hostReqidMap)
 			if nil != err {
-				LogDebug("busyWaitUntil err %s", err)
+				LogDebug("waitUntil err %s", err)
 				break
 			}
 			assert(1 == len(reqids))

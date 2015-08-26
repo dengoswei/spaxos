@@ -87,6 +87,22 @@ func TestSpaxosLogRunAndStop(t *testing.T) {
 	slog.Stop()
 }
 
+func waitUntil(slog *SpaxosLog, beginIndex uint64,
+	reqids []uint64, values [][][]byte, hostReqidMap map[uint64]uint64) {
+	assert(0 < beginIndex)
+	for {
+		err := slog.Wait()
+		assert(nil == err)
+		cnt, err := slog.Get(beginIndex, reqids, values, hostReqidMap)
+		if 0 != cnt {
+			break
+		}
+
+		LogDebug("%s hostid %d slog.Get cnt %d",
+			GetCurrentFuncName(), slog.sp.id, cnt)
+	}
+}
+
 func busyWaitUntil(slog *SpaxosLog, beginIndex uint64,
 	reqids []uint64, values [][][]byte, hostReqidMap map[uint64]uint64) {
 
@@ -135,7 +151,8 @@ func TestSpaxosLogSimplePropose(t *testing.T) {
 		hostReqidMap := make(map[uint64]uint64)
 		// TODO: fix busy wait;
 		// should be more go style:
-		busyWaitUntil(slog, 1, reqids, values, hostReqidMap)
+		// busyWaitUntil(slog, 1, reqids, values, hostReqidMap)
+		waitUntil(slog, 1, reqids, values, hostReqidMap)
 
 		assert(1 == len(reqids))
 		assert(1 == len(values))
@@ -152,7 +169,8 @@ func TestSpaxosLogSimplePropose(t *testing.T) {
 			ohostReqidMap := make(map[uint64]uint64)
 
 			assert(slog.sp.id != testslog[i].sp.id)
-			busyWaitUntil(testslog[i], 1, oreqids, ovalues, ohostReqidMap)
+			// busyWaitUntil(testslog[i], 1, oreqids, ovalues, ohostReqidMap)
+			waitUntil(testslog[i], 1, oreqids, ovalues, ohostReqidMap)
 
 			assert(1 == len(oreqids))
 			assert(1 == len(ovalues))
@@ -183,7 +201,8 @@ func TestSpaxosLogSimplePropose(t *testing.T) {
 			values := make([][][]byte, 1)
 			hostReqidMap := make(map[uint64]uint64)
 
-			busyWaitUntil(slog, 2, reqids, values, hostReqidMap)
+			// busyWaitUntil(slog, 2, reqids, values, hostReqidMap)
+			waitUntil(slog, 2, reqids, values, hostReqidMap)
 			assert(1 == len(reqids))
 			assert(1 == len(values))
 			assert(1 == len(hostReqidMap))
@@ -203,7 +222,8 @@ func TestSpaxosLogSimplePropose(t *testing.T) {
 				ovalues := make([][][]byte, 2)
 				ohostReqidMap := make(map[uint64]uint64)
 
-				busyWaitUntil(testslog[1], 2, oreqids, ovalues, ohostReqidMap)
+				// busyWaitUntil(testslog[1], 2, oreqids, ovalues, ohostReqidMap)
+				waitUntil(testslog[1], 2, oreqids, ovalues, ohostReqidMap)
 				assert(1 <= len(oreqids))
 				assert(1 <= len(ovalues))
 				assert(1 == len(ohostReqidMap))
