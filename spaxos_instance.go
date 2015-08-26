@@ -145,7 +145,6 @@ func (ins *spaxosInstance) Propose(
 	ins.beginPreparePhase(sp, false)
 }
 
-// TODO: no-op propose
 func (ins *spaxosInstance) NoopPropose(sp *spaxos) {
 	assert(nil != sp)
 	assert(false == ins.chosen)
@@ -155,7 +154,49 @@ func (ins *spaxosInstance) NoopPropose(sp *spaxos) {
 	ins.beginPreparePhase(sp, false)
 }
 
-// end of no-op propose
+func (ins *spaxosInstance) tryProposeAsMaster(
+	sp *spaxos, proposingValue *pb.ProposeItem) {
+	assert(nil != sp)
+	assert(false == ins.chosen)
+
+	assert(nil == ins.proposingValue)
+	assert(0 == ins.hostPropReqid)
+	assert(0 == ins.maxProposedNum)
+
+	ins.proposingValue = proposingValue
+	ins.hostPropReqid = proposingValue.Reqid
+
+	req := pb.Message{Type: pb.MsgProp, Index: ins.index,
+		From: sp.id, Entry: pb.PaxosEntry{PropNum: ins.maxProposedNum}}
+	{
+		rsp := ins.updatePromised(req)
+		if true == rsp.Reject {
+			// can't do mast propose => backoff
+		}
+	}
+
+}
+
+func (ins *spaxosInstance) beginMasterPreparePhase(sp *spaxos) {
+	assert(nil != sp)
+	assert(false == ins.chosen)
+	assert(0 == ins.maxProposedNum)
+
+	assert(nil != ins.proposingValue)
+	req := pb.Message{Type: pb.MsgProp, Index: ins.index,
+		From: sp.id, Entry: pb.PaxosEntry{PropNum: ins.maxProposedNum}}
+	// local promised
+	{
+		rsp := ins.updatePromised(req)
+		if true == rsp.Reject {
+			LogDebug("failed to beginMasterPreparePhase => backoff")
+			ins.beginPreparePhase(sp, false)
+			return
+		}
+	}
+	// skip normal prepare phase =>
+	ins.beginAcceptPhase(sp, false)
+}
 
 func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 	assert(nil != sp)
@@ -185,6 +226,11 @@ func (ins *spaxosInstance) beginPreparePhase(sp *spaxos, dropReq bool) {
 				GetFunctionName(ins.beginPreparePhase),
 				ins.maxAcceptedHintNum, rsp.Entry.AccptNum)
 			ins.maxAcceptedHintNum = rsp.Entry.AccptNum
+			ins.proposingValue = rsp.Entry.Value
+		} else if ins.maxAcceptedHintNum == rsp.Entry.AccptNum &&
+			0 == rsp.Entry.AccptNum && nil != rsp.Entry.Value {
+			// TODO: test
+			LogDebug("%s seen prev master propose", GetCurrentFuncName())
 			ins.proposingValue = rsp.Entry.Value
 		}
 
@@ -287,6 +333,11 @@ func (ins *spaxosInstance) stepPrepareRsp(
 		// update the maxAcceptedHitNum & proposingValue
 		if ins.maxAcceptedHintNum < msg.Entry.AccptNum {
 			ins.maxAcceptedHintNum = msg.Entry.AccptNum
+			ins.proposingValue = msg.Entry.Value
+		} else if ins.maxAcceptedHintNum == msg.Entry.AccptNum &&
+			0 == msg.Entry.AccptNum && nil != msg.Entry.Value {
+			// TODO: test
+			LogDebug("%s seen prev master propose", GetCurrentFuncName())
 			ins.proposingValue = msg.Entry.Value
 		}
 

@@ -150,6 +150,7 @@ func (sp *spaxos) submitChosen(index uint64) {
 			}
 		}
 		assert(newMinIndex >= sp.nextMinIndex+1)
+		LogDebug("submitChosen update nextMinIndex %d => %d", sp.nextMinIndex, newMinIndex)
 		sp.nextMinIndex = newMinIndex
 	}
 }
