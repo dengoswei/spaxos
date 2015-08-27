@@ -33,8 +33,5 @@
     conflict error."
    => each prop req associate with a communicate chan ? 
 
-
-8. retire <index, spaxos_instace>
-
 9. after init spaxos, 
    // => prop msg: trying to catch-up with others!!
