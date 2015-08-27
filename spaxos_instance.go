@@ -130,6 +130,7 @@ func (ins *spaxosInstance) Propose(
 
 	assert(nil == ins.proposingValue)
 	assert(0 == ins.hostPropReqid)
+
 	// never proposing nil value
 	// => no-op propose don't use this function
 	assert(nil != proposingValue)
@@ -142,7 +143,11 @@ func (ins *spaxosInstance) Propose(
 
 	// TODO: master propose: skip prepare phase
 	ins.tryNoopProp = false
-	ins.beginPreparePhase(sp, false)
+	if asMaster {
+		ins.beginMasterPreparePhase(sp)
+	} else {
+		ins.beginPreparePhase(sp, false)
+	}
 }
 
 func (ins *spaxosInstance) NoopPropose(sp *spaxos) {
@@ -154,33 +159,11 @@ func (ins *spaxosInstance) NoopPropose(sp *spaxos) {
 	ins.beginPreparePhase(sp, false)
 }
 
-func (ins *spaxosInstance) tryProposeAsMaster(
-	sp *spaxos, proposingValue *pb.ProposeItem) {
-	assert(nil != sp)
-	assert(false == ins.chosen)
-
-	assert(nil == ins.proposingValue)
-	assert(0 == ins.hostPropReqid)
-	assert(0 == ins.maxProposedNum)
-
-	ins.proposingValue = proposingValue
-	ins.hostPropReqid = proposingValue.Reqid
-
-	req := pb.Message{Type: pb.MsgProp, Index: ins.index,
-		From: sp.id, Entry: pb.PaxosEntry{PropNum: ins.maxProposedNum}}
-	{
-		rsp := ins.updatePromised(req)
-		if true == rsp.Reject {
-			// can't do mast propose => backoff
-		}
-	}
-
-}
-
 func (ins *spaxosInstance) beginMasterPreparePhase(sp *spaxos) {
 	assert(nil != sp)
 	assert(false == ins.chosen)
 	assert(0 == ins.maxProposedNum)
+	assert(false == ins.tryNoopProp)
 
 	assert(nil != ins.proposingValue)
 	req := pb.Message{Type: pb.MsgProp, Index: ins.index,

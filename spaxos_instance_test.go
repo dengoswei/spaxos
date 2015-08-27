@@ -330,6 +330,66 @@ func TestBeginAcceptPhase(t *testing.T) {
 	}
 }
 
+func TestBeginMasterPreparePhase(t *testing.T) {
+	printIndicate()
+
+	// case 1: master prop => skip into accept phase
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.hostPropReqid = 0
+		ins.maxProposedNum = 0
+		ins.maxAcceptedHintNum = 0
+		ins.proposingValue = nil
+		ins.promisedNum = 0
+		ins.acceptedNum = 0
+		ins.acceptedValue = nil
+
+		ins.proposingValue = randPropItem()
+		ins.hostPropReqid = ins.proposingValue.Reqid
+		ins.tryNoopProp = false
+		ins.beginMasterPreparePhase(sp)
+
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+
+		accptMsg := sp.outMsgs[0]
+		assert(pb.MsgAccpt == accptMsg.Type)
+		assert(ins.index == accptMsg.Index)
+		assert(sp.id == accptMsg.From)
+		assert(0 == accptMsg.To)
+		assert(0 == accptMsg.Entry.PropNum)
+		assert(nil != accptMsg.Entry.Value)
+		assert(0 == ins.promisedNum)
+		assert(0 == ins.acceptedNum)
+	}
+
+	// case 2: master prop => backoff into normal propose
+	{
+		ins := randSpaxosInstance()
+		assert(nil != ins)
+		sp := randSpaxos()
+		assert(nil != sp)
+
+		ins.chosen = false
+		ins.hostPropReqid = 0
+		ins.maxProposedNum = 0
+		ins.proposingValue = randPropItem()
+		ins.hostPropReqid = ins.proposingValue.Reqid
+		ins.tryNoopProp = false
+		ins.beginMasterPreparePhase(sp)
+
+		assert(1 == len(sp.outMsgs))
+		assert(1 == len(sp.outHardStates))
+		propMsg := sp.outMsgs[0]
+		assert(pb.MsgProp == propMsg.Type)
+	}
+}
+
 func TestPropose(t *testing.T) {
 	printIndicate()
 
